@@ -1,16 +1,26 @@
 #ifdef SDL
-
+#include "shim.h"
 #else
-
 #include <gb/gb.h>
 #include <gb/bgb_emu.h>
 #include <gb/cgb.h>
-#include <string.h>
-#include <stdio.h>
-
 #endif
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "shared.h"
+
+void *
+get_memory(UINT addr)
+{
+#ifdef SDL
+    return (void*)&shim_memory[addr];
+#else
+    return (unsigned char *)addr;
+#endif
+}
 
 u8 t = 0;
 i8 i = 0;
@@ -21,8 +31,11 @@ struct gb_tile tile;
 u8 *screen = NULL;
 u8 *iscreen[256];
 u8 j = 0;
-char msg_buf[128];
+/*char msg_buf[128];*/
 
+unsigned char **p = NULL;
+unsigned char **p_start = NULL;
+unsigned char **p_end = NULL;
 
 void
 init(void)
@@ -32,6 +45,8 @@ init(void)
     u8 x = 0;
     u8 y = 0;
     u8 c = 0;
+
+    DISPLAY_OFF;
 
     memset(&tile, 0, sizeof tile);
 
@@ -59,30 +74,18 @@ init(void)
         set_bkg_data(i + 0, 1, (void*)&tile);
     }
 
-    screen = (unsigned char *)0x9800;
+    screen = get_memory(0x9800);
     for (j = 1024; j; j -= 1)  {
         *screen = 0x7f;
         screen += 1;
     }
 
-}
-
-
-void
-main(void)
-{
-    unsigned char **p = NULL;
-    unsigned char **p_start = NULL;
-    unsigned char **p_end = NULL;
-
-    DISPLAY_OFF;
-    init();
-
     SHOW_BKG;
     enable_interrupts();
     DISPLAY_ON;
 
-    screen = (unsigned char *)0x9800;
+    /*screen = (unsigned char *)0x9800;*/
+    screen = get_memory(0x9800);
     screen += MAP_WIDTH;
 
     for (y = 0; y != 16; y += 1) {
@@ -98,9 +101,18 @@ main(void)
 
     p = p_start;
     i = 0;
+}
 
-    for (;;) {
 
+void
+update(void)
+{
+}
+
+
+void
+render(void)
+{
 #define tiles_per_frame 16
 
         j = tiles_per_frame;
@@ -126,6 +138,26 @@ main(void)
             i += 1;
         }
         t += 1;
+}
+
+void
+main(void)
+{
+#ifdef SDL
+    shim_init();
+#endif
+    init();
+
+    for (;;) {
+#ifdef SDL
+        shim_update();
+#endif
+        update();
+        render();
+#ifdef SDL
+        shim_render();
+#endif
+
     }
 }
 
