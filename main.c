@@ -1,5 +1,7 @@
+#include "shared.h"
+
 #ifdef SDL
-#include "shim.h"
+#include "shim_sdl.h"
 #else
 #include <gb/gb.h>
 #include <gb/bgb_emu.h>
@@ -10,17 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "shared.h"
+#include "shim.h"
 
-void *
-get_memory(UINT addr)
-{
-#ifdef SDL
-    return (void*)&shim_memory[addr];
-#else
-    return (unsigned char *)addr;
-#endif
-}
 
 u8 t = 0;
 i8 i = 0;

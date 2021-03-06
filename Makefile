@@ -14,7 +14,7 @@ sdl: main.c shared.h
 	./tixy_sdl
 
 watch-sdl:
-	watchexe -cr -f "*.(c|h)" "make sdl"
+	watchexec -cr -f "*.c"  -f "*.h" "make sdl"
 
 .PHONY: watch-gb watch-c watch-sdl
 
