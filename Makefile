@@ -1,6 +1,6 @@
 BGB := bgb64.exe
 
-tixy.gb: main.c shared.h
+tixy.gb: main.c shared.h tables.h
 	lcc -o tixy.gb main.c
 
 watch-c: tixy.gb
@@ -15,6 +15,9 @@ sdl: main.c shared.h
 
 watch-sdl:
 	watchexec -cr -f "*.c"  -f "*.h" "make sdl"
+
+tables.h: build_tables.c
+	tcc -run build_tables.c > tables.h
 
 .PHONY: watch-gb watch-c watch-sdl
 
