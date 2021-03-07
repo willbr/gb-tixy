@@ -14,6 +14,10 @@ struct gb_tile {
     struct gb_row row[8];
 };
 
+void init(void);
+void update(void);
+void render(void);
+
 u8 dither_42[8][8] = {
     {  0,  20,   5,  26,   1,  22,   6,  27},
     { 31,  10,  36,  15,  32,  11,  37,  16},
@@ -54,12 +58,17 @@ u8
 pget(struct gb_tile *t, u8 x, u8 y)
 {
     struct gb_row *r = &t->row[y];
-    u8 mask = 0;
-    mask = 1 << x;
-    return
-        (r->low  && mask ? 1 : 0)
-        +
-        (r->high && mask ? 2 : 0);
+    u8 mask = (1 << 7) >> x;
+    u8 l = r->low  & mask ? 1 : 0;
+    u8 h = r->high & mask ? 2 : 0;
+    u8 c = l + h;
+    //printf("%d\n", r->low);
+    //printf("%d\n", r->high);
+    //printf("%d\n", mask);
+    //printf("%d\n", l);
+    //printf("%d\n", h);
+    //printf("%d\n", c);
+    return c;
 }
 
 
@@ -67,14 +76,15 @@ void
 pset(struct gb_tile *t, u8 x, u8 y, u8 c)
 {
     struct gb_row *r = &t->row[y];
-    u8 mask = 0x80 >> x;
-    /*u8 mask = 1 << x;*/
-    /*u8 mask = 0b10000000 >> x;*/
+    u8 mask = (1 << 7) >> x;
     u8 *l = &r->low;
     u8 *h = &r->high;
 
+    //printf("%02x\n", mask);
+    //printf("%02x\n", *l);
     *l = (c & 1) ? (*l | mask) : (*l & ~mask);
     *h = (c & 2) ? (*h | mask) : (*h & ~mask);
+    //printf("%02x\n", *l);
 
 
 }
@@ -102,4 +112,25 @@ pset(struct gb_tile *t, u8 x, u8 y, u8 c)
     /**row |= (mask & p);*/
 /*}*/
 
+
+void
+main(void)
+{
+#ifdef SDL
+    shim_init();
+#endif
+    init();
+
+    for (;;) {
+#ifdef SDL
+        shim_update();
+#endif
+        update();
+        render();
+#ifdef SDL
+        shim_render();
+#endif
+
+    }
+}
 
