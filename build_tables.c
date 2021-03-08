@@ -1,7 +1,20 @@
 #include "shared.h"
+#include <math.h>
+
+void calc_dither(void);
+void calc_sin_table(void);
 
 int
 main(int argc, char **argv)
+{
+    calc_dither();
+    calc_sin_table();
+    return 0;
+}
+
+
+void
+calc_dither(void)
 {
     int i = 0;
     int x = 0;
@@ -15,7 +28,7 @@ main(int argc, char **argv)
         for (y = 0; y != 8; y += 1) {
             for (x = 0; x != 8; x += 1) {
                 c = closest_colour(x, y, i);
-                pset(&t, x, y, c);
+                tile_pset(&t, x, y, c);
             }
 
             if (y == 4)
@@ -27,7 +40,27 @@ main(int argc, char **argv)
         printf(" /* %d */\n\n", i);
     }
     printf("};\n");
-    return 0;
+}
+
+
+void
+calc_sin_table(void)
+{
+    signed int i;
+    double d;
+    /*puts("sin");*/
+    /*printf("%f\n", sin(127.0 * (M_PI/127.0)));*/
+
+    printf("const signed char sin_table[] = {\n");
+    for (i = -127; i <= 127; i += 1) {
+        /*printf("%f\n", (float)i);*/
+        d = sin((double)i * (M_PI/127.0)) * 127;
+        /*printf("%3.1f, %3d\n", d, (signed char) d);*/
+        printf("    /* %+3d */ %+3d", i, (signed char) d);
+        printf("%s\n", i != 127 ? "," : "");
+    }
+
+    printf("};");
 }
 
 

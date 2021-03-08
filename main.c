@@ -1,5 +1,5 @@
+#define INCLUDE_TABLES
 #include "shared.h"
-#include "tables.h"
 
 #ifdef SDL
 #include "shim_sdl.h"
@@ -15,6 +15,21 @@
 
 #include "shim.h"
 
+/* TODO
+ *
+ * sin
+ * cos
+ * tan
+ * atan
+ *
+ * random
+ *
+ * colour
+ * sqrt
+ * hyplot
+ *
+ */
+
 /*#define TIXY_CMD x - t*/
 /*#define TIXY_CMD y - t*/
 /*#define TIXY_CMD y - t << 2*/
@@ -27,7 +42,9 @@
 /*#define TIXY_CMD y - x*/
 /*#define TIXY_CMD ((y > x) && (14 - x  < y)) ? t : 0*/
 /*#define TIXY_CMD i%4 - y%4*/
-#define TIXY_CMD (x%4 && y%4) ? 0x7f : 0
+/*#define TIXY_CMD (x%4 && y%4) ? 0x7f : 0*/
+/*#define TIXY_CMD sin(t) >> x*/
+#define TIXY_CMD sin((y + t>>1)<<4)
 
 u8 t = 0;
 i8 i = 0;
@@ -114,33 +131,28 @@ render(void)
         wait_vbl_done();
         set_bkg_tiles(2,1, 16, 16, (u8*)&screen);
 
-/*#define tiles_per_frame 16*/
-        /*j = tiles_per_frame;*/
+        /*BGB_MESSAGE_FMT(msg_buf, "i: %d", i);*/
+}
 
-        /*[>BGB_MESSAGE_FMT(msg_buf, "i: %d", i);<]*/
 
-        /*[>wait_vbl_done();<]*/
-        /*while (j-- > 0) {*/
-            /*if (LY_REG < 144)*/
-                /*wait_vbl_done();*/
+void
+main(void)
+{
+#ifdef SDL
+    shim_init();
+#endif
+    init();
 
-            /*[>BGB_MESSAGE_FMT(msg_buf, "LY: %d", LY_REG);<]*/
-            /*[>BGB_MESSAGE_FMT(msg_buf, "%d, %d", x, y);<]*/
-            /*[>BGB_MESSAGE_FMT(msg_buf, "j: %d", j);<]*/
+    for (;;) {
+#ifdef SDL
+        shim_update();
+#endif
+        update();
+        render();
+#ifdef SDL
+        shim_render();
+#endif
 
-            /*if (p == p_end)*/
-                /*p = p_start;*/
-
-            /*if (x == 16) {*/
-                /*x = 0;*/
-                /*y = (y + 1) & 0xf;*/
-            /*}*/
-
-            /***(p++) = (TIXY_CMD) & 0x7f;*/
-
-            /*x += 1;*/
-            /*i += 1;*/
-        /*}*/
-        /*t += 1;*/
+    }
 }
 

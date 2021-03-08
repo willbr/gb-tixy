@@ -55,7 +55,7 @@ closest_colour(u8 x, u8 y, i8 c)
 
 
 u8
-pget(struct gb_tile *t, u8 x, u8 y)
+tile_pget(struct gb_tile *t, u8 x, u8 y)
 {
     struct gb_row *r = &t->row[y];
     u8 mask = (1 << 7) >> x;
@@ -73,7 +73,7 @@ pget(struct gb_tile *t, u8 x, u8 y)
 
 
 void
-pset(struct gb_tile *t, u8 x, u8 y, u8 c)
+tile_pset(struct gb_tile *t, u8 x, u8 y, u8 c)
 {
     struct gb_row *r = &t->row[y];
     u8 mask = (1 << 7) >> x;
@@ -113,24 +113,14 @@ pset(struct gb_tile *t, u8 x, u8 y, u8 c)
 /*}*/
 
 
-void
-main(void)
+#ifdef INCLUDE_TABLES
+#include "tables.h"
+
+i8
+sin(i8 i)
 {
-#ifdef SDL
-    shim_init();
-#endif
-    init();
-
-    for (;;) {
-#ifdef SDL
-        shim_update();
-#endif
-        update();
-        render();
-#ifdef SDL
-        shim_render();
-#endif
-
-    }
+    return sin_table[i];
 }
+
+#endif
 

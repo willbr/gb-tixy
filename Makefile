@@ -1,12 +1,13 @@
 BGB := bgb64.exe
+MAKE := mingw32-make
 
 tixy.gb: main.c shared.h tables.h
 	lcc -o tixy.gb main.c
 
-watch-c: tixy.gb
-	watchexec -cr -f "*.c" mingw32-make
+watch-c: 
+	watchexec -cr -f "*.c" "$(MAKE)"
 
-watch-gb: tixy.gb
+watch-gb:
 	$(BGB) -watch ./tixy.gb
 
 sdl: main.c shared.h
