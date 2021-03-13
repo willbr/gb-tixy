@@ -1,4 +1,5 @@
 #include "shared.h"
+#include <stdio.h>
 #include <math.h>
 
 void calc_dither(void);

@@ -1,19 +1,23 @@
 #define INCLUDE_TABLES
 #include "shared.h"
 
+#include <string.h>
+
 #ifdef SDL
 #include "shim_sdl.h"
+#include <stdio.h>
+#include <stdlib.h>
 #else
 #include <gb/gb.h>
 #include <gb/bgb_emu.h>
 #include <gb/cgb.h>
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "shim_shared.h"
 
-#include "shim.h"
+
+
+/*#include "shim.h"*/
 
 /* TODO
  *
@@ -30,7 +34,7 @@
  *
  */
 
-/*#define TIXY_CMD x - t*/
+#define TIXY_CMD x - t
 /*#define TIXY_CMD y - t*/
 /*#define TIXY_CMD y - t << 2*/
 /*#define TIXY_CMD y - t >> 3*/
@@ -43,8 +47,9 @@
 /*#define TIXY_CMD ((y > x) && (14 - x  < y)) ? t : 0*/
 /*#define TIXY_CMD i%4 - y%4*/
 /*#define TIXY_CMD (x%4 && y%4) ? 0x7f : 0*/
-/*#define TIXY_CMD sin(t) >> x*/
-#define TIXY_CMD sin((y + t>>1)<<4)
+/*#define TIXY_CMD sin2(t) >> x*/
+/*#define TIXY_CMD sin2((y + t>>1)<<4)*/
+/*#define TIXY_CMD 1*/
 
 u8 t = 0;
 i8 i = 0;
@@ -81,32 +86,10 @@ init(void)
         }
     }
 
-    /*screen = get_memory(0x9800);*/
-    /*for (j = 1024; j; j -= 1)  {*/
-        /**screen = 0x7f;*/
-        /*screen += 1;*/
-    /*}*/
-
     SHOW_BKG;
     enable_interrupts();
     DISPLAY_ON;
 
-    /*screen = get_memory(0x9800);*/
-    /*screen += MAP_WIDTH;*/
-
-    /*for (y = 0; y != 16; y += 1) {*/
-        /*screen += 2;*/
-        /*for (x = 0; x != 16; x += 1) {*/
-            /*iscreen[j++] = screen++;*/
-        /*}*/
-        /*screen += 14;*/
-    /*}*/
-
-    /*p_start = &iscreen[0];*/
-    /*p_end = &iscreen[255] + 1;*/
-
-    /*p = p_start;*/
-    /*i = 0;*/
 }
 
 
@@ -155,4 +138,5 @@ main(void)
 
     }
 }
+
 

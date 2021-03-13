@@ -1,6 +1,7 @@
 #define MAP_WIDTH 32;
 #define MAP_HEIGHT 32;
 
+
 typedef unsigned char u8;
 typedef   signed char i8;
 
@@ -13,6 +14,7 @@ struct gb_row {
 struct gb_tile {
     struct gb_row row[8];
 };
+
 
 void init(void);
 void update(void);
@@ -117,7 +119,7 @@ tile_pset(struct gb_tile *t, u8 x, u8 y, u8 c)
 #include "tables.h"
 
 i8
-sin(i8 i)
+sin2(i8 i)
 {
     return sin_table[i];
 }

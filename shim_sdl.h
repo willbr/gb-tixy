@@ -7,24 +7,39 @@
 #define DISPLAY_OFF
 #define SHOW_BKG
 
+#define SCRN_VX   256
+#define SCRN_VY   256
+#define SCRN_VX_B 32
+#define SCRN_VY_B 32
+
+#define SCALE_FACTOR 4
 #define SCREEN_WIDTH 160
 #define SCREEN_HEIGHT 144
 
 #define BYTES_PER_TILE 16
 
 typedef unsigned char UINT8;
+typedef   signed char UINT8;
+
 typedef unsigned short UINT16;
-typedef unsigned int UINT32;
+typedef   signed short UINT16;
 
 UINT8 shim_memory[0x10000];
 
 SDL_Window  *shim_window = NULL;
 SDL_Surface *shim_screen_surface = NULL;
 
+SDL_Surface *shim_gb_bkg = NULL;
+//SDL_Surface *shim_gb_win = NULL;
+
+void set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data);
+void get_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data);
+
 
 void
-set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data) 	
+set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
 {
+    //puts(__func__);
     UINT8 *t = &shim_memory[0x8800];
     //printf("%d, %d\n", first_tile, nb_tiles);
 
@@ -42,6 +57,7 @@ set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
     //puts("done");
 }
 
+
 void
 get_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data) 	
 {
@@ -58,18 +74,23 @@ get_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
 }
 
 
+void
+set_bkg_tiles(UINT8 x, UINT8 y, UINT8 w,UINT8 h, unsigned char *tiles)
+{
+    //puts(__func__);
+}
 
 void
 enable_interrupts(void) 	
 {
-    ;
+    //puts(__func__);
 }
 
 
 void
 wait_vbl_done(void)
 {
-    ;
+    //puts(__func__);
 }
 
 
@@ -82,11 +103,11 @@ shim_init(void)
         exit(1);
     }
 
-    shim_window = SDL_CreateWindow("SDL Tutorial",
+    shim_window = SDL_CreateWindow("SDL tixy",
                                    SDL_WINDOWPOS_UNDEFINED,
                                    SDL_WINDOWPOS_UNDEFINED,
-                                   SCREEN_WIDTH,
-                                   SCREEN_HEIGHT,
+                                   SCREEN_WIDTH * SCALE_FACTOR, 
+                                   SCREEN_HEIGHT * SCALE_FACTOR,
                                    SDL_WINDOW_SHOWN);
     if (shim_window == NULL) {
         printf("SDL failed to create a window: %s\n", SDL_GetError());
@@ -94,6 +115,18 @@ shim_init(void)
     }
 
     shim_screen_surface = SDL_GetWindowSurface(shim_window);
+
+
+    shim_gb_bkg = SDL_CreateRGBSurface(0,
+                                       SCRN_VX,
+                                       SCRN_VY,
+                                       32,
+                                       0, 0, 0, 0);
+
+    if (shim_gb_bkg == NULL) {
+        printf("failed to create background surface: %s\n", SDL_GetError());
+        exit(1);
+    }
 
 
         //SDL_Delay(2000);
@@ -113,7 +146,7 @@ shim_update(void)
 
             default:
                 break;
-        };
+        }
     }
 }
 
@@ -126,14 +159,16 @@ shim_render(void)
                  SDL_MapRGB(shim_screen_surface->format,
                             0x00,
                             0x00,
-                            0xff));
+                            0x11));
 
-    int bpp = shim_screen_surface->format->BytesPerPixel;
-    UINT8 *pixels = shim_screen_surface->pixels;
-    UINT8 *pixel = NULL;
+    SDL_LockSurface(shim_gb_bkg);
 
-    UINT8 bg_x = 20;
-    UINT8 bg_y = 20;
+    int bpp = shim_gb_bkg->format->BytesPerPixel;
+    UINT8 *pixels = shim_gb_bkg->pixels;
+    UINT8 *pixel = pixels;
+
+    UINT8 bg_x = 0;
+    UINT8 bg_y = 0;
     unsigned int p = 0;
     char *tile_id = &shim_memory[0x9800];
     struct gb_tile tile;
@@ -142,46 +177,33 @@ shim_render(void)
         for (bg_x = 0; bg_x != 32; bg_x += 1) {
             UINT8 t_x = 0;
             UINT8 t_y = 0;
-            get_bkg_data(*tile_id, 1, (char *)&tile);
-            printf("%x", *tile_id);
-            puts("");
-            printf("%x\n", tile.row[0].low);
-            printf("%x\n", tile.row[0].high);
             for (t_y = 0; t_y != 8; t_y += 1) {
                 for (t_x = 0; t_x != 8; t_x += 1) {
-                    UINT8 c = pget(&tile, t_x, t_y);
-                    printf("%d", c);
-                    ;
+                    *pixel = rand() % 255;
+                    pixel += 1;
                 }
-                puts("");
             }
-            //exit(0);
 
             tile_id += 1;
         }
-        puts("");
     }
-    puts("");
-    exit(0);
 
-    //for (y = 20; y != 41; y += 1) {
-        //for (x = 20; x != 41; x += 1) {
 
-            //pixel = &pixels[(y * shim_screen_surface->pitch) + x *bpp];
-            ////printf("%p\n", pixel);
-            //*pixel++ = 0x00;
-            //*pixel++ = 0x00;
-            //*pixel++ = 0x00;
-            ///[>pixel++ = 0xff;
-            ///[>pixel++ = 0xff;
-        //}
-    //}
-    //exit(1);
-    //*pixel++ = 0xff;
-    //*pixel++ = 0xff;
+    SDL_UnlockSurface(shim_gb_bkg);
+
+    //SDL_FillRect(shim_gb_bkg,
+                 //NULL,
+                 //SDL_MapRGB(shim_gb_bkg->format, 0x21, 0xFF, 0x61));
+
+    if (SDL_BlitScaled(shim_gb_bkg, NULL, shim_screen_surface, NULL)) {
+        printf("failed to Blit gb bkg", SDL_GetError());
+    }
 
     
     SDL_UpdateWindowSurface(shim_window);
+
+    SDL_Delay(1000);
+    exit(0);
 }
 
 
