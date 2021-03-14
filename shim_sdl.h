@@ -16,7 +16,13 @@
 #define SCREEN_WIDTH 160
 #define SCREEN_HEIGHT 144
 
+#define BITS_PER_BYTE 8
 #define BYTES_PER_TILE 16
+
+#define TILES_VX_B 16
+#define TILES_VY_B 24
+#define TILES_VX   TILES_VX_B * 8
+#define TILES_VY   TILES_VY_B * 8
 
 typedef unsigned char UINT8;
 typedef   signed char  INT8;
@@ -24,17 +30,25 @@ typedef   signed char  INT8;
 typedef unsigned short UINT16;
 typedef   signed short  INT16;
 
+typedef unsigned int UINT32;
+typedef   signed int  INT32;
+
 UINT8 shim_memory[0x10000];
 
 SDL_Window  *shim_window = NULL;
 SDL_Surface *shim_screen_surface = NULL;
 
+SDL_Surface *shim_gb_tiles = NULL;
 SDL_Surface *shim_gb_bkg = NULL;
 //SDL_Surface *shim_gb_win = NULL;
 
 void set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data);
 void get_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data);
 
+void shim_render_gb_tiles(void);
+void shim_render_gb_background(void);
+void shim_render_gb_sprites(void);
+void shim_render_gb_window(void);
 
 void
 set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
@@ -97,9 +111,9 @@ wait_vbl_done(void)
 void
 shim_init(void)
 {
-
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        printf("SDL failed to start: %s\n", SDL_GetError());
+        printf("SDL failed to start: %s\n",
+               SDL_GetError());
         exit(1);
     }
 
@@ -110,12 +124,18 @@ shim_init(void)
                                    SCREEN_HEIGHT * SCALE_FACTOR,
                                    SDL_WINDOW_SHOWN);
     if (shim_window == NULL) {
-        printf("SDL failed to create a window: %s\n", SDL_GetError());
+        printf("SDL failed to create a window: %s\n",
+               SDL_GetError());
         exit(1);
     }
 
     shim_screen_surface = SDL_GetWindowSurface(shim_window);
 
+    shim_gb_tiles = SDL_CreateRGBSurface(0,
+                                       TILES_VX,
+                                       TILES_VY,
+                                       32,
+                                       0, 0, 0, 0);
 
     shim_gb_bkg = SDL_CreateRGBSurface(0,
                                        SCRN_VX,
@@ -124,7 +144,8 @@ shim_init(void)
                                        0, 0, 0, 0);
 
     if (shim_gb_bkg == NULL) {
-        printf("failed to create background surface: %s\n", SDL_GetError());
+        printf("failed to create background surface: %s\n",
+               SDL_GetError());
         exit(1);
     }
 
@@ -161,7 +182,51 @@ shim_render(void)
                             0x00,
                             0x11));
 
-    SDL_LockSurface(shim_gb_bkg);
+    shim_render_gb_tiles();
+    shim_render_gb_background();
+    shim_render_gb_sprites();
+    shim_render_gb_window();
+    
+    SDL_UpdateWindowSurface(shim_window);
+
+    SDL_Delay(2000);
+    exit(0);
+}
+
+
+void
+shim_render_gb_tiles(void)
+{
+    puts("render tiles");
+    int bpp = shim_gb_tiles->format->BytesPerPixel;
+    UINT32 *pixels = shim_gb_tiles->pixels;
+    UINT32 *pixel = pixels;
+    int x = 0;
+    int y = 0;
+
+    for (y = 0; y < 8; y += 1) {
+        pixel = pixels + (y * shim_gb_tiles->w);
+        for (x = 0; x < 8; x += 1) {
+            *pixel = SDL_MapRGB(shim_gb_tiles->format,
+                                rand() * 255,
+                                rand() * 255,
+                                rand() * 255);
+            pixel += 1;
+        }
+
+    }
+}
+
+
+void
+shim_render_gb_background(void)
+{
+    SDL_Rect src = {0};
+    SDL_Rect dst = {0};
+
+    puts("render background");
+
+    if (SDL_MUSTLOCK(shim_gb_bkg)) SDL_LockSurface(shim_gb_bkg);
 
     int bpp = shim_gb_bkg->format->BytesPerPixel;
     UINT8 *pixels = shim_gb_bkg->pixels;
@@ -177,33 +242,51 @@ shim_render(void)
         for (bg_x = 0; bg_x != 32; bg_x += 1) {
             UINT8 t_x = 0;
             UINT8 t_y = 0;
-            for (t_y = 0; t_y != 8; t_y += 1) {
-                for (t_x = 0; t_x != 8; t_x += 1) {
-                    *pixel = rand() % 255;
-                    pixel += 1;
-                }
-            }
+            //*pixel = rand() % 255;
+            //pixel += 1;
+            //for (t_y = 0; t_y != 8; t_y += 1) {
+                //for (t_x = 0; t_x != 8; t_x += 1) {
+                    //*pixel = rand() % 255;
+                    //pixel += 1;
+                //}
+            //}
 
             tile_id += 1;
         }
     }
 
 
-    SDL_UnlockSurface(shim_gb_bkg);
+    if (SDL_MUSTLOCK(shim_gb_bkg)) SDL_UnlockSurface(shim_gb_bkg);
 
     //SDL_FillRect(shim_gb_bkg,
                  //NULL,
                  //SDL_MapRGB(shim_gb_bkg->format, 0x21, 0xFF, 0x61));
 
+    if (SDL_BlitSurface(shim_gb_tiles, NULL, shim_gb_bkg, NULL)) {
+        printf("failed to Blit tile to bkg", SDL_GetError());
+    }
+
+    /*if (SDL_BlitScaled(shim_gb_tiles, &src, shim_gb_bkg, &dst)) {*/
+        //printf("failed to Blit tile to bkg", SDL_GetError());
+    /*}*/
+
     if (SDL_BlitScaled(shim_gb_bkg, NULL, shim_screen_surface, NULL)) {
         printf("failed to Blit gb bkg", SDL_GetError());
     }
+}
 
-    
-    SDL_UpdateWindowSurface(shim_window);
 
-    SDL_Delay(1000);
-    exit(0);
+void
+shim_render_gb_sprites(void)
+{
+    puts("render sprites");
+}
+
+
+void
+shim_render_gb_window(void)
+{
+    puts("render window");
 }
 
 
