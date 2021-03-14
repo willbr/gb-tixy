@@ -19,10 +19,10 @@
 #define BYTES_PER_TILE 16
 
 typedef unsigned char UINT8;
-typedef   signed char UINT8;
+typedef   signed char  INT8;
 
 typedef unsigned short UINT16;
-typedef   signed short UINT16;
+typedef   signed short  INT16;
 
 UINT8 shim_memory[0x10000];
 
