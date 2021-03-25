@@ -12,7 +12,7 @@
 #define SCRN_VX_B 32
 #define SCRN_VY_B 32
 
-#define SCALE_FACTOR 4
+#define SCALE_FACTOR 5
 #define SCREEN_WIDTH 160
 #define SCREEN_HEIGHT 144
 
@@ -53,7 +53,6 @@ void shim_render_gb_window(void);
 void
 set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
 {
-    //puts(__func__);
     UINT8 *t = &shim_memory[0x8800];
     //printf("%d, %d\n", first_tile, nb_tiles);
 
@@ -63,12 +62,9 @@ set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
     while  (nb_tiles--) {
         UINT8 i = BYTES_PER_TILE;
         while (i-- != 0) {
-            //printf("%x", i);
             *t++ = *data++;
         }
-        //puts("");
     }
-    //puts("done");
 }
 
 
@@ -91,8 +87,23 @@ get_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
 void
 set_bkg_tiles(UINT8 x, UINT8 y, UINT8 w,UINT8 h, unsigned char *tiles)
 {
-    //puts(__func__);
+    UINT8 i = 0;
+    UINT8 j = 0;
+    UINT8 *base = &shim_memory[0x9800];
+    UINT8 *t    = NULL;
+
+    //printf("%2d, %2d, %2d, %2d, %x\n", x, y, w, h, *tiles);
+
+    for (i = 0; i < h; i += 1) {
+        t = base + ((y + i) * SCRN_VY_B) + x;
+        for (j = 0; j < w; j += 1) {
+            t += 1;
+            *t = *tiles;
+            tiles += 1;
+        }
+    }
 }
+
 
 void
 enable_interrupts(void) 	
@@ -201,12 +212,21 @@ shim_render_gb_tiles(void)
     int bpp = shim_gb_tiles->format->BytesPerPixel;
     UINT32 *pixels = shim_gb_tiles->pixels;
     UINT32 *pixel = pixels;
-    int x = 0;
-    int y = 0;
+    int px = 0;
+    int py = 0;
+    int tx = 0;
+    int ty = 0;
+    u8  c = 0;
+    struct gb_tile *base = &shim_memory[0x8800];
+    struct gb_tile *t = NULL;
 
-    for (y = 0; y < 8; y += 1) {
-        pixel = pixels + (y * shim_gb_tiles->w);
-        for (x = 0; x < 8; x += 1) {
+    printf("%d\n", TILES_VX);
+    printf("%d\n", TILES_VY);
+
+    for (py = 0; py < TILES_VY; py += 1) {
+        pixel = pixels + (py * shim_gb_tiles->w);
+        for (px = 0; px < TILES_VX; px += 1) {
+            //c = tile_pget(&tile, px, py);
             *pixel = SDL_MapRGB(shim_gb_tiles->format,
                                 rand() * 255,
                                 rand() * 255,
@@ -215,6 +235,17 @@ shim_render_gb_tiles(void)
         }
 
     }
+
+    t = base;
+    for (ty = 0; ty < TILES_VY_B; ty += 1) {
+        for (tx = 0; tx < TILES_VX_B; tx += 1) {
+            printf("%2d %2d\n", ty, tx);
+            t += 1;
+        }
+    }
+
+    base->row[0].high = 0xff;
+    base->row[2].high = 0xff;
 }
 
 
@@ -242,14 +273,21 @@ shim_render_gb_background(void)
         for (bg_x = 0; bg_x != 32; bg_x += 1) {
             UINT8 t_x = 0;
             UINT8 t_y = 0;
-            //*pixel = rand() % 255;
-            //pixel += 1;
-            //for (t_y = 0; t_y != 8; t_y += 1) {
-                //for (t_x = 0; t_x != 8; t_x += 1) {
-                    //*pixel = rand() % 255;
-                    //pixel += 1;
-                //}
-            //}
+            //printf("%d, %d = %d\n", bg_x, bg_y, *tile_id);
+
+            src.x = 8 * (*tile_id);
+            src.y = t_y;
+            src.w = 8;
+            src.h = 8;
+
+            dst.x = 8 * bg_x;
+            dst.y = 8 * bg_y;
+            dst.w = 8;
+            dst.h = 8;
+
+            if (SDL_BlitSurface(shim_gb_tiles, &src, shim_gb_bkg, &dst)) {
+                printf("failed to Blit tile to bkg", SDL_GetError());
+            }
 
             tile_id += 1;
         }
@@ -262,9 +300,9 @@ shim_render_gb_background(void)
                  //NULL,
                  //SDL_MapRGB(shim_gb_bkg->format, 0x21, 0xFF, 0x61));
 
-    if (SDL_BlitSurface(shim_gb_tiles, NULL, shim_gb_bkg, NULL)) {
-        printf("failed to Blit tile to bkg", SDL_GetError());
-    }
+    //if (SDL_BlitSurface(shim_gb_tiles, NULL, shim_gb_bkg, NULL)) {
+        //printf("failed to Blit tile to bkg", SDL_GetError());
+    //}
 
     /*if (SDL_BlitScaled(shim_gb_tiles, &src, shim_gb_bkg, &dst)) {*/
         //printf("failed to Blit tile to bkg", SDL_GetError());
