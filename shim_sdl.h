@@ -1,4 +1,4 @@
-#ifndef _SHIiM_SDL_H
+#ifndef _SHIM_SDL_H
 #define _SHIM_SDL_H
 
 #include <SDL.h>
@@ -12,6 +12,9 @@
 #define SCRN_VX_B 32
 #define SCRN_VY_B 32
 
+#define SCRN_FPS 60
+#define SCRN_TICKS_PER_FRAME (1000 / SCRN_FPS)
+
 #define SCALE_FACTOR 5
 #define SCREEN_WIDTH 160
 #define SCREEN_HEIGHT 144
@@ -24,6 +27,7 @@
 #define TILES_VX   TILES_VX_B * 8
 #define TILES_VY   TILES_VY_B * 8
 
+
 typedef unsigned char UINT8;
 typedef   signed char  INT8;
 
@@ -33,12 +37,21 @@ typedef   signed short  INT16;
 typedef unsigned int UINT32;
 typedef   signed int  INT32;
 
+typedef  UINT8 u8;
+typedef   INT8 i8;
+typedef UINT16 u16;
+typedef  INT16 i16;
+typedef UINT32 u32;
+typedef  INT32 i32;
+
 UINT8 shim_memory[0x10000];
 
 UINT32 shim_colour_0 = 0;
 UINT32 shim_colour_1 = 0;
 UINT32 shim_colour_2 = 0;
 UINT32 shim_colour_3 = 0;
+
+u32 shim_prev_time = 0;
 
 SDL_Window  *shim_window = NULL;
 SDL_Surface *shim_screen_surface = NULL;
@@ -195,6 +208,10 @@ shim_update(void)
 void
 shim_render(void)
 {
+    static i = 0;
+    u32 time = SDL_GetTicks();
+    u32 time_delta = time - shim_prev_time;
+
     SDL_FillRect(shim_screen_surface,
                  NULL,
                  SDL_MapRGB(shim_screen_surface->format,
@@ -209,15 +226,21 @@ shim_render(void)
     
     SDL_UpdateWindowSurface(shim_window);
 
-    SDL_Delay(2000);
-    exit(0);
+    if (time_delta < SCRN_TICKS_PER_FRAME) {
+        SDL_Delay(SCRN_TICKS_PER_FRAME - time_delta);
+    }
+
+    if (i++ > 60 * 10)
+        exit(0);
+
+    shim_prev_time = time;
 }
 
 
 void
 shim_render_gb_tiles(void)
 {
-    puts("render tiles");
+    //puts("render tiles");
     int bpp = shim_gb_tiles->format->BytesPerPixel;
     UINT32 *pixels = shim_gb_tiles->pixels;
     UINT32 *pixel = pixels;
@@ -286,7 +309,7 @@ shim_render_gb_background(void)
     SDL_Rect src = {0};
     SDL_Rect dst = {0};
 
-    puts("render background");
+    //puts("render background");
 
     if (SDL_MUSTLOCK(shim_gb_bkg)) SDL_LockSurface(shim_gb_bkg);
 
@@ -353,14 +376,14 @@ shim_render_gb_background(void)
 void
 shim_render_gb_sprites(void)
 {
-    puts("render sprites");
+    //puts("render sprites");
 }
 
 
 void
 shim_render_gb_window(void)
 {
-    puts("render window");
+    //puts("render window");
 }
 
 
