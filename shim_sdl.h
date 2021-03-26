@@ -35,6 +35,11 @@ typedef   signed int  INT32;
 
 UINT8 shim_memory[0x10000];
 
+UINT32 shim_colour_0 = 0;
+UINT32 shim_colour_1 = 0;
+UINT32 shim_colour_2 = 0;
+UINT32 shim_colour_3 = 0;
+
 SDL_Window  *shim_window = NULL;
 SDL_Surface *shim_screen_surface = NULL;
 
@@ -161,7 +166,11 @@ shim_init(void)
     }
 
 
-        //SDL_Delay(2000);
+    
+    shim_colour_0 = SDL_MapRGB(shim_gb_tiles->format, 10,  10, 10);
+    shim_colour_1 = SDL_MapRGB(shim_gb_tiles->format, 10,  85, 10);
+    shim_colour_2 = SDL_MapRGB(shim_gb_tiles->format, 10, 170, 10);
+    shim_colour_3 = SDL_MapRGB(shim_gb_tiles->format, 10, 255, 10);
 }
 
 
@@ -212,40 +221,62 @@ shim_render_gb_tiles(void)
     int bpp = shim_gb_tiles->format->BytesPerPixel;
     UINT32 *pixels = shim_gb_tiles->pixels;
     UINT32 *pixel = pixels;
+    int x = 0;
+    int y = 0;
     int px = 0;
     int py = 0;
-    int tx = 0;
-    int ty = 0;
+    int tmx = 0;
+    int tmy = 0;
     u8  c = 0;
     struct gb_tile *base = &shim_memory[0x8800];
     struct gb_tile *t = NULL;
 
-    printf("%d\n", TILES_VX);
-    printf("%d\n", TILES_VY);
-
-    for (py = 0; py < TILES_VY; py += 1) {
-        pixel = pixels + (py * shim_gb_tiles->w);
-        for (px = 0; px < TILES_VX; px += 1) {
-            //c = tile_pget(&tile, px, py);
-            *pixel = SDL_MapRGB(shim_gb_tiles->format,
-                                rand() * 255,
-                                rand() * 255,
-                                rand() * 255);
-            pixel += 1;
-        }
-
-    }
+    //for (py = 0; py < TILES_VY; py += 1) {
+        //pixel = pixels + (py * shim_gb_tiles->w);
+        //for (px = 0; px < TILES_VX; px += 1) {
+            //*pixel = SDL_MapRGB(shim_gb_tiles->format,
+                                //rand() * 255,
+                                //rand() * 255,
+                                //rand() * 255);
+            //pixel += 1;
+        //}
+    //}
 
     t = base;
-    for (ty = 0; ty < TILES_VY_B; ty += 1) {
-        for (tx = 0; tx < TILES_VX_B; tx += 1) {
-            printf("%2d %2d\n", ty, tx);
+    for (tmy = 0; tmy < TILES_VY_B; tmy += 1) {
+        for (tmx = 0; tmx < TILES_VX_B; tmx += 1) {
+            py = tmy * 8;
+            px = tmx * 8;
+            for (y = 0; y < 8; y += 1) {
+                pixel = pixels + ((py + y) * shim_gb_tiles->w) + px;
+                for (x = 0; x < 8; x += 1) {
+                    c = tile_pget(t, x, y);
+                    switch (c) {
+                    case 0:
+                        *pixel = shim_colour_0;
+                        break;
+
+                    case 1:
+                        *pixel = shim_colour_1;
+                        break;
+
+                    case 2:
+                        *pixel = shim_colour_2;
+                        break;
+
+                    case 3:
+                        *pixel = shim_colour_3;
+                        break;
+
+                    default:
+                        break;
+                    }
+                    pixel += 1;
+                }
+            }
             t += 1;
         }
     }
-
-    base->row[0].high = 0xff;
-    base->row[2].high = 0xff;
 }
 
 

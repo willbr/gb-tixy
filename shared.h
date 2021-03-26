@@ -6,8 +6,13 @@ typedef unsigned char u8;
 typedef   signed char i8;
 
 struct gb_row {
+#ifdef SDL
+    u8 high;
+    u8 low;
+#else
     u8 low;
     u8 high;
+#endif
 };
 
 
