@@ -339,7 +339,12 @@ shim_render_gb_background(void)
         //printf("failed to Blit tile to bkg", SDL_GetError());
     /*}*/
 
-    if (SDL_BlitScaled(shim_gb_bkg, NULL, shim_screen_surface, NULL)) {
+    src.x = 0;
+    src.y = 0;
+    src.w = SCREEN_WIDTH;
+    src.h = SCREEN_HEIGHT;
+
+    if (SDL_BlitScaled(shim_gb_bkg, &src, shim_screen_surface, NULL)) {
         printf("failed to Blit gb bkg", SDL_GetError());
     }
 }
