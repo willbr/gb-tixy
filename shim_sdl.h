@@ -58,7 +58,6 @@ SDL_Surface *shim_screen_surface = NULL;
 
 SDL_Surface *shim_gb_tiles = NULL;
 SDL_Surface *shim_gb_bkg = NULL;
-//SDL_Surface *shim_gb_win = NULL;
 
 void set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data);
 void get_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data);
@@ -66,7 +65,6 @@ void get_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data);
 void shim_render_gb_tiles(void);
 void shim_render_gb_background(void);
 void shim_render_gb_sprites(void);
-void shim_render_gb_window(void);
 
 void
 set_bkg_data(UINT8 first_tile, UINT8 nb_tiles, unsigned char *data)
@@ -126,14 +124,21 @@ set_bkg_tiles(UINT8 x, UINT8 y, UINT8 w,UINT8 h, unsigned char *tiles)
 void
 enable_interrupts(void) 	
 {
-    //puts(__func__);
+    ;
 }
 
 
 void
 wait_vbl_done(void)
 {
-    //puts(__func__);
+    u32 time = SDL_GetTicks();
+    u32 time_delta = time - shim_prev_time;
+
+    if (time_delta < SCRN_TICKS_PER_FRAME) {
+        SDL_Delay(SCRN_TICKS_PER_FRAME - time_delta);
+    }
+
+    shim_prev_time = time;
 }
 
 
@@ -165,6 +170,12 @@ shim_init(void)
                                        TILES_VY,
                                        32,
                                        0, 0, 0, 0);
+
+    if (shim_gb_tiles == NULL) {
+        printf("failed to create tile map surface: %s\n",
+               SDL_GetError());
+        exit(1);
+    }
 
     shim_gb_bkg = SDL_CreateRGBSurface(0,
                                        SCRN_VX,
@@ -209,38 +220,28 @@ void
 shim_render(void)
 {
     static i = 0;
-    u32 time = SDL_GetTicks();
-    u32 time_delta = time - shim_prev_time;
 
     SDL_FillRect(shim_screen_surface,
                  NULL,
                  SDL_MapRGB(shim_screen_surface->format,
-                            0x00,
-                            0x00,
+                            0x11,
+                            0x11,
                             0x11));
 
     shim_render_gb_tiles();
     shim_render_gb_background();
     shim_render_gb_sprites();
-    shim_render_gb_window();
     
     SDL_UpdateWindowSurface(shim_window);
 
-    if (time_delta < SCRN_TICKS_PER_FRAME) {
-        SDL_Delay(SCRN_TICKS_PER_FRAME - time_delta);
-    }
-
     if (i++ > 60 * 10)
         exit(0);
-
-    shim_prev_time = time;
 }
 
 
 void
 shim_render_gb_tiles(void)
 {
-    //puts("render tiles");
     int bpp = shim_gb_tiles->format->BytesPerPixel;
     UINT32 *pixels = shim_gb_tiles->pixels;
     UINT32 *pixel = pixels;
@@ -254,16 +255,16 @@ shim_render_gb_tiles(void)
     struct gb_tile *base = &shim_memory[0x8800];
     struct gb_tile *t = NULL;
 
-    //for (py = 0; py < TILES_VY; py += 1) {
-        //pixel = pixels + (py * shim_gb_tiles->w);
-        //for (px = 0; px < TILES_VX; px += 1) {
-            //*pixel = SDL_MapRGB(shim_gb_tiles->format,
-                                //rand() * 255,
-                                //rand() * 255,
-                                //rand() * 255);
-            //pixel += 1;
-        //}
-    //}
+    for (py = 0; py < TILES_VY; py += 1) {
+        pixel = pixels + (py * shim_gb_tiles->w);
+        for (px = 0; px < TILES_VX; px += 1) {
+            *pixel = SDL_MapRGB(shim_gb_tiles->format,
+                                rand() * 255,
+                                rand() * 255,
+                                rand() * 255);
+            pixel += 1;
+        }
+    }
 
     t = base;
     for (tmy = 0; tmy < TILES_VY_B; tmy += 1) {
@@ -309,10 +310,6 @@ shim_render_gb_background(void)
     SDL_Rect src = {0};
     SDL_Rect dst = {0};
 
-    //puts("render background");
-
-    if (SDL_MUSTLOCK(shim_gb_bkg)) SDL_LockSurface(shim_gb_bkg);
-
     int bpp = shim_gb_bkg->format->BytesPerPixel;
     UINT8 *pixels = shim_gb_bkg->pixels;
     UINT8 *pixel = pixels;
@@ -321,15 +318,16 @@ shim_render_gb_background(void)
     UINT8 bg_y = 0;
     unsigned int p = 0;
     char *tile_id = &shim_memory[0x9800];
-    struct gb_tile tile;
+
+    if (SDL_MUSTLOCK(shim_gb_bkg))
+        SDL_LockSurface(shim_gb_bkg);
 
     for (bg_y = 0; bg_y != 32; bg_y += 1) {
         for (bg_x = 0; bg_x != 32; bg_x += 1) {
-            UINT8 t_x = 0;
-            UINT8 t_y = 0;
-            //printf("%d, %d = %d\n", bg_x, bg_y, *tile_id);
+            UINT8 t_x = ((*tile_id) % TILES_VX_B) * 8;
+            UINT8 t_y = ((*tile_id) / TILES_VX_B) * 8;
 
-            src.x = 8 * (*tile_id);
+            src.x = t_x;
             src.y = t_y;
             src.w = 8;
             src.h = 8;
@@ -348,21 +346,10 @@ shim_render_gb_background(void)
     }
 
 
-    if (SDL_MUSTLOCK(shim_gb_bkg)) SDL_UnlockSurface(shim_gb_bkg);
+    if (SDL_MUSTLOCK(shim_gb_bkg))
+        SDL_UnlockSurface(shim_gb_bkg);
 
-    //SDL_FillRect(shim_gb_bkg,
-                 //NULL,
-                 //SDL_MapRGB(shim_gb_bkg->format, 0x21, 0xFF, 0x61));
-
-    //if (SDL_BlitSurface(shim_gb_tiles, NULL, shim_gb_bkg, NULL)) {
-        //printf("failed to Blit tile to bkg", SDL_GetError());
-    //}
-
-    /*if (SDL_BlitScaled(shim_gb_tiles, &src, shim_gb_bkg, &dst)) {*/
-        //printf("failed to Blit tile to bkg", SDL_GetError());
-    /*}*/
-
-    src.x = 0;
+    src.x = 8;
     src.y = 0;
     src.w = SCREEN_WIDTH;
     src.h = SCREEN_HEIGHT;
@@ -380,11 +367,5 @@ shim_render_gb_sprites(void)
 }
 
 
-void
-shim_render_gb_window(void)
-{
-    //puts("render window");
-}
-
-
 #endif
+

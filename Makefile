@@ -1,7 +1,7 @@
 BGB := bgb64.exe
 MAKE := mingw32-make
 
-tixy.gb: main.c shared.h tables.h
+gb: main.c shared.h tables.h
 	lcc -o tixy.gb main.c
 
 watch-c: 

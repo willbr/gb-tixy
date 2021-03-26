@@ -49,14 +49,11 @@ calc_sin_table(void)
 {
     signed int i;
     double d;
-    /*puts("sin");*/
-    /*printf("%f\n", sin(127.0 * (M_PI/127.0)));*/
 
     printf("const signed char sin_table[] = {\n");
     for (i = -127; i <= 127; i += 1) {
         /*printf("%f\n", (float)i);*/
         d = sin((double)i * (M_PI/127.0)) * 127;
-        /*printf("%3.1f, %3d\n", d, (signed char) d);*/
         printf("    /* %+3d */ %+3d", i, (signed char) d);
         printf("%s\n", i != 127 ? "," : "");
     }

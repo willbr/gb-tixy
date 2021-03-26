@@ -16,7 +16,6 @@
 #include "shim_shared.h"
 
 
-
 /*#include "shim.h"*/
 
 /* TODO
@@ -33,6 +32,7 @@
  * hyplot
  *
  */
+
 
 #define TIXY_CMD x - t
 /*#define TIXY_CMD y - t*/
@@ -89,7 +89,6 @@ init(void)
     SHOW_BKG;
     enable_interrupts();
     DISPLAY_ON;
-
 }
 
 
