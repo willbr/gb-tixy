@@ -90,14 +90,14 @@ tile_pset(struct gb_tile *t, u8 x, u8 y, u8 c)
 #include "tables.h"
 
 i8
-sin2(i8 i)
+gb_sin(i8 i)
 {
     return sin_table[i];
 }
 
 
 i8
-sqrt(i8 i)
+gb_sqrt(i8 i)
 {
     return sqrt_table[i];
 }
