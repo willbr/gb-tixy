@@ -24,8 +24,8 @@ watch-gb:
 
 sdl: $(SRC_DIR)/main.c $(SRC_DIR)/shared.h tables.h
 	mkdir -p $(BUILD_DIR)
-	tcc -DSDL `sdl2-config --cflags --libs` -o $(BUILD_DIR)/$(TARGET_SDL) $(SRC_DIR)/main.c 2>&1 | $(FILTER)
-	$(BUILD_DIR)/$(TARGET_SDL) 2>&1 | $(FILTER_LIBGL)
+	@- tcc -DSDL `sdl2-config --cflags --libs` -o $(BUILD_DIR)/$(TARGET_SDL) $(SRC_DIR)/main.c 2>&1 | $(FILTER)
+	@- $(BUILD_DIR)/$(TARGET_SDL) 2>&1 | $(FILTER_LIBGL)
 
 watch-sdl:
 	watchexec -cr -f "$(SRC_DIR)/*.c"  -f "$(SRC_DIR)/*.h" "make sdl"
