@@ -17,7 +17,6 @@
 
 /* TODO
  *
- * sin
  * cos
  * tan
  * atan
@@ -44,7 +43,7 @@
 /*#define TIXY_CMD i%4 - y%4*/
 /*#define TIXY_CMD (x%4 && y%4) ? 0x7f : 0*/
 /*#define TIXY_CMD sin(t) >> x*/
-#define TIXY_CMD sin((y + t>>1)<<4)
+#define TIXY_CMD sin(t + y) << sqrt(x)
 
 u8 t = 0;
 i8 i = 0;
@@ -107,6 +106,12 @@ init(void)
 
     /*p = p_start;*/
     /*i = 0;*/
+
+    /*BGB_MESSAGE_FMT(msg_buf, "i: %d, %d", i, (unsigned char)i);*/
+    /*i = -127;*/
+    /*do {*/
+        /*BGB_MESSAGE_FMT(msg_buf, "i: %d, %u", i, i);*/
+    /*} while (i++ != 127);*/
 }
 
 

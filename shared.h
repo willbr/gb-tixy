@@ -122,5 +122,12 @@ sin(i8 i)
     return sin_table[i];
 }
 
+
+i8
+sqrt(i8 i)
+{
+    return sqrt_table[i];
+}
+
 #endif
 

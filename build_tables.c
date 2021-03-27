@@ -3,12 +3,14 @@
 
 void calc_dither(void);
 void calc_sin_table(void);
+void calc_sqrt(void);
 
 int
 main(int argc, char **argv)
 {
     calc_dither();
     calc_sin_table();
+    calc_sqrt();
     return 0;
 }
 
@@ -64,3 +66,20 @@ calc_sin_table(void)
 }
 
 
+void
+calc_sqrt(void)
+{
+    signed int i;
+    double d;
+
+    printf("const signed char sqrt_table[] = {\n");
+    for (i = -127; i <= 127; i += 1) {
+        /*printf("%f\n", (float)i);*/
+        d = sqrt(i);
+        /*printf("%3.1f, %3d\n", d, (signed char) d);*/
+        printf("    /* %+3d */ %+3d", i, (signed char) d);
+        printf("%s\n", i != 127 ? "," : "");
+    }
+
+    printf("};");
+}
