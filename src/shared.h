@@ -25,6 +25,8 @@ void init(void);
 void update(void);
 void render(void);
 
+i8 i8_abs(i8);
+
 
 u8 dither_42[8][8] = {
     {  0,  20,   5,  26,   1,  22,   6,  27},
@@ -85,14 +87,45 @@ tile_pset(struct gb_tile *t, u8 x, u8 y, u8 c)
     *h = (c & 2) ? (*h | mask) : (*h & ~mask);
 }
 
+i8
+i8_abs(i8 n)
+{
+    if (n == -128)
+        return 127;
+    else if (n < 0)
+        return -n;
+    else
+        return n;
+}
+
 
 #ifdef INCLUDE_TABLES
 #include "tables.h"
 
 i8
-sin2(i8 i)
+sin(i8 i)
 {
     return sin_table[i];
+}
+
+i8
+cos(i8 i)
+{
+    return cos_table[i];
+}
+
+
+i8
+tan(i8 i)
+{
+    return tan_table[i];
+}
+
+
+i8
+atan(i8 i)
+{
+    return atan_table[i];
 }
 
 
@@ -101,6 +134,7 @@ sqrt(i8 i)
 {
     return sqrt_table[i];
 }
+
 
 #endif
 

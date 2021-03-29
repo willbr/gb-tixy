@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #else
+#include <stdio.h>
 #include <gb/gb.h>
 #include <gb/bgb_emu.h>
 #include <gb/cgb.h>
@@ -27,35 +28,48 @@
  * random
  *
  * colour
- * sqrt
  * hyplot
  *
  */
 
 
-/*#define TIXY_CMD x - t*/
+/*#define TIXY_CMD x + (t << 2)*/
 /*#define TIXY_CMD y - t*/
 /*#define TIXY_CMD y - t << 2*/
 /*#define TIXY_CMD y - t >> 3*/
 /*#define TIXY_CMD x << 3*/
 /*#define TIXY_CMD y << 3*/
-/*#define TIXY_CMD (y % 4) << 5*/
+/*#define TIXY_CMD (y % 8) << 2*/
 /*#define TIXY_CMD (x % 4) << 5*/
 /*#define TIXY_CMD (i % 4) << 5*/
 /*#define TIXY_CMD y - x*/
 /*#define TIXY_CMD ((y > x) && (14 - x  < y)) ? t : 0*/
-/*#define TIXY_CMD i%4 - y%4*/
-/*#define TIXY_CMD (x%4 && y%4) ? 0x7f : 0*/
-/*#define TIXY_CMD sin(t) >> x*/
-#define TIXY_CMD sin(t + y) << sqrt(x)
-/*#define TIXY_CMD sin2(t) >> x*/
+/*#define TIXY_CMD (i%4 - y%4) << 4*/
+/*#define TIXY_CMD (x%4 && y%4) ? (t << 4) : 0*/
+/*#define TIXY_CMD (x%4 && y%4) ? t : 0*/
+/*#define TIXY_CMD sin(y) + t*/
+/*#define TIXY_CMD sin(x) + (t << 2)*/
+/*#define TIXY_CMD sin(t)*/
 /*#define TIXY_CMD sin2((y + t>>1)<<4)*/
-/*#define TIXY_CMD 1*/
+/*#define TIXY_CMD t*/
+/*#define TIXY_CMD (sin(x) % (i >> 1)) + (t << 3)*/
+/*#define TIXY_CMD sqrt(sin(x)) + t*/
+/*#define TIXY_CMD sin(x) + t*/
+/*#define TIXY_CMD (sin(x) << 2) + (cos(y) << 2) + (t << 1)*/
+/*#define TIXY_CMD (sin(i) >> 1) + t*/
+/*#define TIXY_CMD (y-x) << ((t >> 2) % 8)*/
+/*#define TIXY_CMD x>3 && y>3 && x<12 && y<12 ? (t << 3) : (i + t)*/
+/*#define TIXY_CMD cos(t + i + x * y)*/
+/*#define TIXY_CMD (cos(x >> 3) - cos((x << 1) -(t<<2)) - y + 14) != 0 ? 0x7f : i*/
+/*#define TIXY_CMD y-t*3+9+3*cos(x*3-t)-5*sin(x*7)*/
+/*#define TIXY_CMD atan(i>>2) + sin(x) + cos(y) + (t << 2)*/
+/*#define TIXY_CMD (x-y) - (sin(t << 1) >> 3) * 3*/
+#define TIXY_CMD sin(t) * tan(t)
 
-u8 t = 0;
+i8 t = 0;
 i8 i = 0;
-u8 x = 0;
-u8 y = 0;
+i8 x = 0;
+i8 y = 0;
 
 struct gb_tile tile;
 u8 screen[256];
@@ -99,10 +113,12 @@ update(void)
     p = screen;
     for (y = 0; y != 16; y += 1) {
         for (x = 0; x != 16; x += 1) {
-            *p = (TIXY_CMD) & 0x7f;
+            *p = i8_abs(TIXY_CMD);
             p++;
             i++;
         }
+        /*BGB_MESSAGE_FMT(msg_buf, "*t: %d", t);*/
+        /*BGB_MESSAGE_FMT(msg_buf, "*p: %d", *p);*/
     }
     t++;
 }
@@ -114,7 +130,6 @@ render(void)
         wait_vbl_done();
         set_bkg_tiles(2,1, 16, 16, (u8*)&screen);
 
-        /*BGB_MESSAGE_FMT(msg_buf, "i: %d", i);*/
 }
 
 
