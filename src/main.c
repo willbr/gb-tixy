@@ -21,7 +21,6 @@
 
 /* TODO
  *
- * cos
  * tan
  * atan
  *
@@ -50,6 +49,10 @@
 /*#define TIXY_CMD sin(y) + t*/
 /*#define TIXY_CMD sin(x) + (t << 2)*/
 /*#define TIXY_CMD sin(t)*/
+/*#define TIXY_CMD i%4 - y%4*/
+/*#define TIXY_CMD (x%4 && y%4) ? 0x7f : 0*/
+/*#define TIXY_CMD sin(t) >> x*/
+#define TIXY_CMD gb_sin(t + y) << gb_sqrt(x)
 /*#define TIXY_CMD sin2((y + t>>1)<<4)*/
 /*#define TIXY_CMD t*/
 /*#define TIXY_CMD (sin(x) % (i >> 1)) + (t << 3)*/
@@ -83,7 +86,7 @@ unsigned char **p_end = NULL;
 void
 init(void)
 {
-    unsigned int j = 0;
+    unsigned char j = 0;
     u8 c = 0;
 
     DISPLAY_OFF;

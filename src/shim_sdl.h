@@ -108,8 +108,6 @@ set_bkg_tiles(UINT8 x, UINT8 y, UINT8 w,UINT8 h, unsigned char *tiles)
     UINT8 *base = &shim_memory[0x9800];
     UINT8 *t    = NULL;
 
-    //printf("%2d, %2d, %2d, %2d, %x\n", x, y, w, h, *tiles);
-
     for (i = 0; i < h; i += 1) {
         t = base + ((y + i) * SCRN_VY_B) + x;
         for (j = 0; j < w; j += 1) {
@@ -189,7 +187,6 @@ shim_init(void)
         exit(1);
     }
 
-
     
     shim_colour_0 = SDL_MapRGB(shim_gb_tiles->format, 10,  10, 10);
     shim_colour_1 = SDL_MapRGB(shim_gb_tiles->format, 10,  85, 10);
@@ -205,12 +202,23 @@ shim_update(void)
 
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
-            case SDL_QUIT:
+        case SDL_QUIT:
+            exit(0);
+            break;
+
+        case SDL_KEYDOWN:
+            switch (event.key.keysym.sym) {
+            case SDLK_ESCAPE:
                 exit(0);
                 break;
 
             default:
                 break;
+            }
+            break;
+
+        default:
+            break;
         }
     }
 }
@@ -252,7 +260,7 @@ shim_render_gb_tiles(void)
     int tmx = 0;
     int tmy = 0;
     u8  c = 0;
-    struct gb_tile *base = &shim_memory[0x8800];
+    struct gb_tile *base = (struct gb_tile *)&shim_memory[0x8800];
     struct gb_tile *t = NULL;
 
     for (py = 0; py < TILES_VY; py += 1) {

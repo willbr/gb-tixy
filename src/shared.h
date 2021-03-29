@@ -103,34 +103,34 @@ i8_abs(i8 n)
 #include "tables.h"
 
 i8
-sin(i8 i)
+gb_sin(i8 i)
 {
     return sin_table[i];
 }
 
 i8
-cos(i8 i)
+gb_cos(i8 i)
 {
     return cos_table[i];
 }
 
 
 i8
-tan(i8 i)
+gb_tan(i8 i)
 {
     return tan_table[i];
 }
 
 
 i8
-atan(i8 i)
+gb_atan(i8 i)
 {
     return atan_table[i];
 }
 
 
 i8
-sqrt(i8 i)
+gb_sqrt(i8 i)
 {
     return sqrt_table[i];
 }
