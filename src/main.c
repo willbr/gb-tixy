@@ -52,7 +52,7 @@
 /*#define TIXY_CMD i%4 - y%4*/
 /*#define TIXY_CMD (x%4 && y%4) ? 0x7f : 0*/
 /*#define TIXY_CMD sin(t) >> x*/
-#define TIXY_CMD gb_sin(t + y) << gb_sqrt(x)
+/*#define TIXY_CMD gb_sin(t + y) << gb_sqrt(x)*/
 /*#define TIXY_CMD sin2((y + t>>1)<<4)*/
 /*#define TIXY_CMD t*/
 /*#define TIXY_CMD (sin(x) % (i >> 1)) + (t << 3)*/
@@ -67,7 +67,7 @@
 /*#define TIXY_CMD y-t*3+9+3*cos(x*3-t)-5*sin(x*7)*/
 /*#define TIXY_CMD atan(i>>2) + sin(x) + cos(y) + (t << 2)*/
 /*#define TIXY_CMD (x-y) - (sin(t << 1) >> 3) * 3*/
-#define TIXY_CMD sin(t) * tan(t)
+#define TIXY_CMD gb_sin(t) * gb_tan(t)
 
 i8 t = 0;
 i8 i = 0;

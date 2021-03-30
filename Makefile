@@ -1,8 +1,11 @@
+CCRUN := tcc -run
 TARGET := tixy.gb
 TARGET_SDL := tixy_sdl
 
 BGB := bgb64.exe
 MAKE := mingw32-make
+MKDIR := $(CCRUN) ./src/win_mkdir.c
+#mkdir -p
 
 BUILD_DIR := ./build
 SRC_DIR := ./src
@@ -13,7 +16,8 @@ FILTER_LIBGL := grep --invert-match "LIBGL:.*"
 FILTER := $(FILTER_PULSE) | $(FILTER_DBUS)
 
 gb: $(SRC_DIR)/main.c $(SRC_DIR)/shared.h tables.h
-	mkdir -p $(BUILD_DIR)
+	$(MKDIR) $(BUILD_DIR)
+	@echo mkdir build
 	lcc -o $(BUILD_DIR)/$(TARGET) $(SRC_DIR)/main.c
 
 watch-c: 
