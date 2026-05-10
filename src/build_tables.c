@@ -8,7 +8,7 @@ void calc_cos_table(void);
 void calc_tan_table(void);
 void calc_atan_table(void);
 void calc_sqrt(void);
-double round(double n);
+double my_round(double n);
 
 int
 main(int argc, char **argv)
@@ -63,7 +63,7 @@ calc_sin_table(void)
     for (i = -128; i <= 127; i += 1) {
         /*printf("%f\n", (float)i);*/
         d = sin((double)i * (M_PI/127.0)) * 127;
-        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)round(d));
+        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)my_round(d));
         printf("%s\n", i != 127 ? "," : "");
     }
 
@@ -80,7 +80,7 @@ calc_cos_table(void)
     for (i = -128; i <= 127; i += 1) {
         /*printf("%f\n", (float)i);*/
         d = cos((double)i * (M_PI/127.0)) * 127;
-        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)round(d));
+        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)my_round(d));
         printf("%s\n", i != 127 ? "," : "");
     }
 
@@ -98,7 +98,7 @@ calc_tan_table(void)
     for (i = -128; i <= 127; i += 1) {
         /*printf("%f\n", (float)i);*/
         d = tan((double)i * (M_PI/127.0)) * 127;
-        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)round(d));
+        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)my_round(d));
         printf("%s\n", i != 127 ? "," : "");
     }
 
@@ -116,7 +116,7 @@ calc_atan_table(void)
     for (i = -128; i <= 127; i += 1) {
         /*printf("%f\n", (float)i);*/
         d = atan((double)i * (M_PI/127.0)) * 127;
-        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)round(d));
+        printf("    /* %+4d %+7.2f */ %+4d", i, d, (signed char)my_round(d));
         printf("%s\n", i != 127 ? "," : "");
     }
 
@@ -144,7 +144,7 @@ calc_sqrt(void)
 
 
 double
-round(double n)
+my_round(double n)
 {
     double i;
     double f;

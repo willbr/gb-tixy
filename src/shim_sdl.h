@@ -1,7 +1,10 @@
 #ifndef _SHIM_SDL_H
 #define _SHIM_SDL_H
 
-#include <SDL.h>
+#define SDL_MAIN_HANDLED
+#include <SDL2/SDL.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define DISPLAY_ON
 #define DISPLAY_OFF
@@ -52,6 +55,7 @@ UINT32 shim_colour_2 = 0;
 UINT32 shim_colour_3 = 0;
 
 u32 shim_prev_time = 0;
+u8  shim_next_example = 0;
 
 SDL_Window  *shim_window = NULL;
 SDL_Surface *shim_screen_surface = NULL;
@@ -210,6 +214,11 @@ shim_update(void)
             switch (event.key.keysym.sym) {
             case SDLK_ESCAPE:
                 exit(0);
+                break;
+
+            case SDLK_SPACE:
+            case SDLK_RIGHT:
+                shim_next_example = 1;
                 break;
 
             default:
