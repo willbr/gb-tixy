@@ -36,7 +36,9 @@ Formulas are RPN token programs, editable on the device. `gallery[]` in `main.c`
 
 On the GB the 256-wide loops are SM83 asm (naked functions with `__asm__` strings in `rpn.h`, args are page numbers in globals `rpn_p0..p3`). Every array is page-aligned: ROM tables via `TABLE_AT(addr)` (`__at` on GB, empty under SDL; pages 0x7500–0x7FFF, see `PAGE_*` in `build_tables.c`), RAM buffers from `arena` aligned in `rpn_init()`. The loops keep `n` in L and swap the array's page into H per access. Asm covers `+ - * & | ^ << >> < > = ?`, lookups (`asm_lut`), fill and the `v*k` table used for array×scalar multiply; `/ %` fall back to the C `v_` loops. `copy_grid` writes the screen page to VRAM checking STAT every 2 bytes (GBDK's `set_bkg_tiles` was ~1 frame). The C loops (SDL) are the reference: any asm change must still match them exactly. `build.py gb` fails if ROM code grows past `TABLES_START` (0x7500).
 
-Performance (PyBoy, CGB): 12–60 fps across the gallery. Comparison operators return 127/0.
+On CGB `init()` calls `cpu_fast()` (double speed). `render()` doesn't wait for vblank before `copy_grid` (it checks STAT itself); it only waits when an update finished within the same frame, capping at 60 updates/s (in SDL that wait is the frame limiter).
+
+Performance (PyBoy): 30–60 fps on CGB, 15–60 on DMG across the gallery. Comparison operators return 127/0.
 
 `src/record.c` includes `main.c` and renders headless for `./build.py gif`.
 

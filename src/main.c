@@ -179,6 +179,8 @@ init(void)
         set_bkg_tiles(0, y, 32, 1, row);
 
     if (_cpu == CGB_TYPE) {
+        /* double-speed CPU; frame timing (sys_time) is unchanged */
+        cpu_fast();
         set_bkg_palette(0, 1, tixy_palette);
 
         /* every tile uses palette 0 */
@@ -359,10 +361,12 @@ render(void)
 {
     u16 now = 0;
 
-    wait_vbl_done();
+    /* no vblank wait: copy_grid checks STAT itself, so copy straight away */
     draw_screen();
 
-    now = sys_time;
+    /* at most one update per frame; t wouldn't have changed */
+    while ((now = sys_time) == last_time)
+        wait_vbl_done();
     /* only the counter changes here; rebuilding the program line is slow */
     if ((u8)(now - last_time) != loop_frames) {
         loop_frames = now - last_time;

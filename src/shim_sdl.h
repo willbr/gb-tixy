@@ -112,6 +112,12 @@ enable_interrupts(void)
 }
 
 
+void
+cpu_fast(void)
+{
+}
+
+
 UINT8
 joypad(void)
 {

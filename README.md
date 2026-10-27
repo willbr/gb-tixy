@@ -81,8 +81,9 @@ On the Game Boy the inner loops are hand-written SM83 assembly. Every
 256-value array (lookup tables in ROM, stack buffers in RAM) starts on a
 256-byte boundary, so element `n` of any array is at `page:n`: register L
 holds `n` and each access just loads that array's page into H. An add is
-about 13 cycles per cell. The gallery runs at 12–60 fps (the top-right
-counter shows frames per update); the SDL build uses the equivalent C
+about 13 cycles per cell. On a Game Boy Color the CPU runs in double-speed
+mode. The gallery runs at 30–60 fps on a Color and 15–60 fps on the
+original (the top-right counter shows frames per update); the SDL build uses the equivalent C
 loops, which double as the reference the assembly is tested against.
 
 The same `main.c` builds for the Game Boy with GBDK or for the desktop with
