@@ -16,13 +16,16 @@ u8 screen[256];
 u8 formula_idx = 0;
 u8 prev_pad = 0;
 
-/* CGB background palette 0, colour 0 = lightest like the DMG */
+/* CGB background palette 0: background, positive, negative, unused */
 const palette_color_t tixy_palette[4] = {
+    RGB8(  0,   0,   0),
     RGB8(255, 255, 255),
-    RGB8(255, 120, 130),
-    RGB8(200,  20,  40),
-    RGB8( 10,  10,  10),
+    RGB8(255,  34,  68),
+    RGB8( 85,  85,  85),
 };
+
+/* DMG shades for the same indices: black, white, light grey, dark grey */
+#define TIXY_BGP 0x93
 
 
 /*
@@ -38,7 +41,7 @@ const palette_color_t tixy_palette[4] = {
         i8 y;                                     \
         for (y = 0; y != 16; y += 1) {            \
             for (x = 0; x != 16; x += 1) {        \
-                *p++ = i8_abs(expr);              \
+                *p++ = (expr);                    \
                 i++;                              \
             }                                     \
         }                                         \
@@ -99,9 +102,11 @@ init(void)
 
     DISPLAY_OFF;
 
-    set_bkg_data(0, 128, (void*)&dither_gfx);
+    /* tile n is the circle for value (i8)n, so a cell's value is its tile */
+    set_bkg_data(0,   128, (void*)&circle_gfx[0]);
+    set_bkg_data(128, 128, (void*)&circle_gfx[128 * 16]);
 
-    memset(row, 0x7f, sizeof row);
+    memset(row, 0, sizeof row);
     for (y = 0; y != 32; y += 1)
         set_bkg_tiles(0, y, 32, 1, row);
 
@@ -114,6 +119,8 @@ init(void)
         for (y = 0; y != 32; y += 1)
             set_bkg_tiles(0, y, 32, 1, row);
         VBK_REG = VBK_TILES;
+    } else {
+        BGP_REG = TIXY_BGP;
     }
 
     SHOW_BKG;

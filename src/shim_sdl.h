@@ -44,6 +44,7 @@ typedef UINT16 palette_color_t;
 
 UINT8 _cpu = CGB_TYPE;
 UINT8 VBK_REG = VBK_TILES;
+UINT8 BGP_REG = 0;
 
 UINT8 shim_memory[0x10000];
 UINT8 shim_pad = 0;

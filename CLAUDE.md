@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A clone of [tixy.land](https://tixy.land) for the Game Boy. The ROM is CGB-compatible (`-Wm-yc`): on a CGB it loads `tixy_palette` from `main.c` into background palette 0, on a DMG it uses the default greys, with an SDL preview build for desktop iteration.
+A clone of [tixy.land](https://tixy.land) for the Game Boy. The ROM is CGB-compatible (`-Wm-yc`): on a CGB it loads `tixy_palette` (black, white, red) from `main.c` into background palette 0, on a DMG it sets `BGP_REG` to the matching greys, with an SDL preview build for desktop iteration.
 
 ## Build & run
 
@@ -33,7 +33,7 @@ Each visualisation is `FORMULA(name, expr)` in `main.c`, which expands to a func
 
 `src/build_tables.c` runs at build time and emits `src/tables.h`:
 
-1. `dither_gfx[]` — 128 8×8 tiles; tile 0 = colour index 0 everywhere (lightest on DMG), tile 127 = darkest. Uses an 8×8 ordered-dither matrix.
+1. `circle_gfx[]` — 256 8×8 tiles, tile n = the circle for value `(i8)n`, so a formula's result is written straight into the tilemap. Circle radius grows with |v| (snapped to round shapes, max 7px, 1px gap); colour 1 for positive, 2 for negative, 0 background. Both 128-tile halves are uploaded in `init()`.
 2. `sin_table`, `cos_table`, `tan_table`, `atan_table`, `sqrt_table` — 256 `i8` entries, **stored in u8 order** (index k holds f((i8)k)), looked up as `table[(u8)i]` by `gb_sin` etc. in `shared.h`. Angles are in units of π/127 (127 ≈ π); `atan` returns an angle (±51). Values are rounded and clamped to i8.
 
 Inside formulas use `gb_sin(t)` etc., not `<math.h>` — the GB has no FPU.
@@ -41,5 +41,5 @@ Inside formulas use `gb_sin(t)` etc., not `<math.h>` — the GB has no FPU.
 ### Game Boy constraints
 
 - Grid values are `i8`; assume 8-bit wraparound.
-- `i8_abs(-128)` returns `127`.
+- A formula's value sets circle size: ±127 is full size, so small-range expressions (e.g. `y - x`) draw small dots — scale them up (`<< 3`) to taste.
 - Avoid `%`, `/` and `*` on signed values in formulas where `&`/shifts work — SDCC calls software routines for them on the SM83.

@@ -9,60 +9,41 @@
 
 typedef double (*fn_t)(double);
 
-unsigned char dither_42[8][8] = {
-    {  0,  20,   5,  26,   1,  22,   6,  27},
-    { 31,  10,  36,  15,  32,  11,  37,  16},
-    {  7,  28,   2,  23,   9,  29,   3,  24},
-    { 39,  18,  33,  13,  40,  19,  35,  14},
-    {  1,  22,   7,  27,   0,  21,   5,  26},
-    { 33,  12,  38,  17,  31,  11,  37,  16},
-    {  9,  30,   4,  25,   8,  29,   3,  24},
-    { 41,  20,  35,  14,  39,  18,  34,  13}
-};
-
-
-#define number_of_colours 4
-#define number_of_sectors (number_of_colours - 1)
-#define max_val 127
-#define sector_size (max_val / number_of_sectors)
-
-
-/* returns a GB colour index, 0 = lightest */
-int
-closest_colour(int x, int y, int c)
-{
-    int limit = dither_42[y % 8][x % 8];
-    int s = 0;
-
-    if (c < 0)
-        c = -c;
-
-    s = c / sector_size;
-    if (c % sector_size > limit)
-        s += 1;
-
-    return s > 3 ? 3 : s;
-}
-
+/*
+ * Tile k draws the value (signed char)k as a tixy.land circle around pixel
+ * (3,3), leaving a 1px gap between cells. Radius grows linearly with |v|,
+ * snapped down to a squared radius that gives a round pixel shape
+ * (dot, plus, 3x3, 5, 7, 7+). Colour 0 = background, 1 = positive, 2 = negative.
+ */
+int round_r2[] = {0, 1, 2, 5, 10, 13};
 
 void
-calc_dither(void)
+calc_circles(void)
 {
-    int i = 0;
+    int k = 0;
+    int v = 0;
     int x = 0;
     int y = 0;
     int c = 0;
+    int n = 0;
+    int r2 = 0;
+    double r = 0;
     unsigned char low = 0;
     unsigned char high = 0;
 
-    printf("const unsigned char dither_gfx[] = {\n");
-    for (i = 0; i != 128; i += 1) {
+    printf("const unsigned char circle_gfx[] = {\n");
+    for (k = 0; k != 256; k += 1) {
+        v = (signed char)k;
+        r = (v < 0 ? -v : v) * (3.7 / 128.0);
+        r2 = -1;
+        for (n = 0; n != 6 && v != 0 && round_r2[n] <= r*r; n += 1)
+            r2 = round_r2[n];
         printf("    ");
         for (y = 0; y != 8; y += 1) {
             low = 0;
             high = 0;
             for (x = 0; x != 8; x += 1) {
-                c = closest_colour(x, y, i);
+                c = (x-3)*(x-3) + (y-3)*(y-3) <= r2 ? (v > 0 ? 1 : 2) : 0;
                 low  |= (c & 1)        << (7 - x);
                 high |= ((c >> 1) & 1) << (7 - x);
             }
@@ -73,7 +54,7 @@ calc_dither(void)
             /* GB tile row: low bitplane first, then high */
             printf("0x%02x,0x%02x,", low, high);
         }
-        printf(" /* %d */\n\n", i);
+        printf(" /* %d */\n\n", v);
     }
     printf("};\n");
 }
@@ -118,7 +99,7 @@ calc_table(const char *name, fn_t f)
 int
 main(void)
 {
-    calc_dither();
+    calc_circles();
     calc_table("sin_table",  angle_sin);
     calc_table("cos_table",  angle_cos);
     calc_table("tan_table",  angle_tan);

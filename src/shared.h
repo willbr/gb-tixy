@@ -2,18 +2,6 @@ typedef unsigned char u8;
 typedef   signed char i8;
 
 
-i8
-i8_abs(i8 n)
-{
-    if (n == -128)
-        return 127;
-    else if (n < 0)
-        return -n;
-    else
-        return n;
-}
-
-
 #ifdef INCLUDE_TABLES
 #include "tables.h"
 
