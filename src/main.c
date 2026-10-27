@@ -47,6 +47,8 @@ const palette_color_t tixy_palette[4] = {
         }                                         \
     }
 
+/* tixy: Math.sin(y/8+t)  (y/8 rad ~= y*5 units) */
+FORMULA(f_sin_y8,   gb_sin((y << 2) + y + t))
 FORMULA(f_scroll,   x + (t << 2))
 FORMULA(f_wipe,     y - t)
 FORMULA(f_diagonal, y - x)
@@ -69,6 +71,7 @@ FORMULA(f_tangle,   gb_sin(t) * gb_tan(t))
 FORMULA(f_shift,    (y-x) << ((t >> 2) & 7))
 
 void (*formulas[])(void) = {
+    f_sin_y8,
     f_scroll,
     f_wipe,
     f_diagonal,
