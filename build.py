@@ -69,7 +69,8 @@ def check_rom_layout():
 
 def gb():
     tables()
-    run([lcc(), "-Wm-yc", "-Wl-j", "-o", ROM, os.path.join(SRC, "main.c")])
+    run([lcc(), "-Wm-yc", "-Wl-j", "-o", ROM,
+         os.path.join(SRC, "main.c"), os.path.join(SRC, "rpn_gb.s")])
     check_rom_layout()
 
 

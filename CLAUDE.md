@@ -21,7 +21,7 @@ A clone of [tixy.land](https://tixy.land) for the Game Boy. The ROM is CGB-compa
 
 ## Architecture
 
-The same `src/main.c` compiles for two targets, switched by `-DSDL`:
+The same `src/main.c` compiles for two targets, switched by `-DSDL` (the GB build also links `src/rpn_gb.s`):
 
 - **Game Boy** (default): includes `<gb/gb.h>`.
 - **SDL** (`-DSDL`): includes `src/shim_sdl.h`, which reimplements the GBDK calls used (`set_bkg_data`, `set_bkg_tiles`, `joypad`, `wait_vbl_done`, `set_bkg_palette`, …) against `shim_memory[0x10000]` (tile data at `0x8800`, tilemap at `0x9800`), always acts as a CGB (palette 0 only, attribute writes ignored) counts `sys_time` per `wait_vbl_done`, and draws the visible 160×144 at scroll (0,0). Keyboard maps to GBDK `J_*` bits: arrows, Space/Z = A, X = B, Enter = Start, Backspace = Select.
@@ -34,7 +34,7 @@ Formulas are RPN token programs, editable on the device. `gallery[]` in `main.c`
 
 `t` is `(i8)sys_time`, so animation speed doesn't depend on how long evaluation takes. Screen: row 0 status (`draw_text`: formula, run/edit, `err`, frames per update), rows 1–16 the grid at column 2, row 17 the program scrolled to the cursor.
 
-On the GB the 256-wide loops are SM83 asm (naked functions with `__asm__` strings in `rpn.h`, args are page numbers in globals `rpn_p0..p3`). Every array is page-aligned: ROM tables via `TABLE_AT(addr)` (`__at` on GB, empty under SDL; pages 0x7500–0x7FFF, see `PAGE_*` in `build_tables.c`), RAM buffers from `arena` aligned in `rpn_init()`. The loops keep `n` in L and swap the array's page into H per access. Asm covers `+ - * & | ^ << >> < > = ?`, lookups (`asm_lut`), fill and the `v*k` table used for array×scalar multiply; `/ %` fall back to the C `v_` loops. `copy_grid` writes the screen page to VRAM checking STAT every 2 bytes (GBDK's `set_bkg_tiles` was ~1 frame). The C loops (SDL) are the reference: any asm change must still match them exactly. `build.py gb` fails if ROM code grows past `TABLES_START` (0x7500).
+On the GB the 256-wide loops are SM83 asm in `src/rpn_gb.s` (sdas syntax, `.macro` for the shared entry/store and the binary-op template), declared in `rpn.h`; args are page numbers in the C globals `rpn_p0..p3`, set by the `run_*` wrappers. `copy_grid` is there too. `build.py gb` links `main.c` + `rpn_gb.s`; the SDL build doesn't use it. Every array is page-aligned: ROM tables via `TABLE_AT(addr)` (`__at` on GB, empty under SDL; pages 0x7500–0x7FFF, see `PAGE_*` in `build_tables.c`), RAM buffers from `arena` aligned in `rpn_init()`. The loops keep `n` in L and swap the array's page into H per access. Asm covers `+ - * & | ^ << >> < > = ?`, lookups (`asm_lut`), fill and the `v*k` table used for array×scalar multiply; `/ %` fall back to the C `v_` loops. `copy_grid` writes the screen page to VRAM checking STAT every 2 bytes (GBDK's `set_bkg_tiles` was ~1 frame). The C loops (SDL) are the reference: any asm change must still match them exactly. `build.py gb` fails if ROM code grows past `TABLES_START` (0x7500).
 
 On CGB `init()` calls `cpu_fast()` (double speed). `render()` doesn't wait for vblank before `copy_grid` (it checks STAT itself); it only waits when an update finished within the same frame, capping at 60 updates/s (in SDL that wait is the frame limiter).
 

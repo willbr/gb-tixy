@@ -275,194 +275,28 @@ run_sel(i8 *d, const i8 *c, const i8 *a, const i8 *b)
 #else
 
 /*
- * SM83 loops over 256 page-aligned values. Arguments are page numbers
- * (address >> 8) passed in these globals. L is the index n; each access
- * loads the array's page into H, so element n of page P is (P:n).
- * Binary ops: p0 = a, p1 = b, p2 = dest, held in B, C, D; E is scratch.
- * Loops end when L wraps to 0.
+ * SM83 loops in rpn_gb.s. Arguments are page numbers (address >> 8) in
+ * these globals; every array they touch is 256-byte aligned.
  */
 u8 rpn_p0, rpn_p1, rpn_p2, rpn_p3;
 
 #define PAGE(ptr) ((u8)((size_t)(ptr) >> 8))
 
-#define ASM_ENTRY                                                  \
-    "ld a,(_rpn_p0)\n ld b,a\n"                                    \
-    "ld a,(_rpn_p1)\n ld c,a\n"                                    \
-    "ld a,(_rpn_p2)\n ld d,a\n"                                    \
-    "ld l,#0\n"
-
-/* d = a OP b for ops that take (hl) directly: 13 cycles per value */
-#define ASM_BINOP(name, insn)                                      \
-    void name(void) __naked                                        \
-    {                                                              \
-        __asm__(ASM_ENTRY                                          \
-            "1$:\n"                                                \
-            " ld h,b\n ld a,(hl)\n"                                 \
-            " ld h,c\n " insn " a,(hl)\n"                           \
-            " ld h,d\n ld (hl),a\n"                                 \
-            " inc l\n jr nz,1$\n"                                   \
-            " ret\n");                                             \
-    }
-
-ASM_BINOP(asm_add, "add")
-ASM_BINOP(asm_sub, "sub")
-ASM_BINOP(asm_and, "and")
-ASM_BINOP(asm_or,  "or")
-ASM_BINOP(asm_xor, "xor")
-
-/* signed compares: flip the sign bits and compare unsigned; carry -> 127 */
-void
-asm_lt(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "1$:\n"
-        " ld h,c\n ld a,(hl)\n xor a,#0x80\n ld e,a\n"
-        " ld h,b\n ld a,(hl)\n xor a,#0x80\n"
-        " cp a,e\n sbc a,a\n and a,#0x7f\n"
-        " ld h,d\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-void
-asm_gt(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "1$:\n"
-        " ld h,b\n ld a,(hl)\n xor a,#0x80\n ld e,a\n"
-        " ld h,c\n ld a,(hl)\n xor a,#0x80\n"
-        " cp a,e\n sbc a,a\n and a,#0x7f\n"
-        " ld h,d\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* a - b - 1 borrows only when a == b */
-void
-asm_eq(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "1$:\n"
-        " ld h,c\n ld e,(hl)\n"
-        " ld h,b\n ld a,(hl)\n"
-        " sub a,e\n sub a,#1\n sbc a,a\n and a,#0x7f\n"
-        " ld h,d\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* shift-and-add on the low byte; H is the multiplier between page loads */
-void
-asm_mul(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "1$:\n"
-        " ld h,c\n ld a,(hl)\n"
-        " ld h,b\n ld e,(hl)\n"
-        " ld h,a\n xor a,a\n"
-        "2$:\n"
-        " srl h\n jr nc,3$\n add a,e\n"
-        "3$:\n"
-        " sla e\n inc h\n dec h\n jr nz,2$\n"
-        " ld h,d\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* counts 8..255 (and negative) give 0 */
-void
-asm_shl(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "1$:\n"
-        " ld h,c\n ld a,(hl)\n cp a,#8\n jr c,2$\n"
-        " xor a,a\n jr 5$\n"
-        "2$:\n"
-        " ld e,a\n ld h,b\n ld a,(hl)\n inc e\n jr 4$\n"
-        "3$:\n"
-        " add a,a\n"
-        "4$:\n"
-        " dec e\n jr nz,3$\n"
-        "5$:\n"
-        " ld h,d\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* counts 8..255 (and negative) shift by 7 */
-void
-asm_shr(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "1$:\n"
-        " ld h,c\n ld a,(hl)\n cp a,#8\n jr c,2$\n"
-        " ld a,#7\n"
-        "2$:\n"
-        " ld e,a\n ld h,b\n ld a,(hl)\n inc e\n jr 4$\n"
-        "3$:\n"
-        " sra a\n"
-        "4$:\n"
-        " dec e\n jr nz,3$\n"
-        " ld h,d\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* d = lut[a]: p0 = a, p1 = dest, p2 = lut; DE addresses the lut */
-void
-asm_lut(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "1$:\n"
-        " ld h,b\n ld e,(hl)\n"
-        " ld a,(de)\n"
-        " ld h,c\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* d = c ? a : b: p0 = c, p1 = a, p2 = b, p3 = dest in B, C, D, E */
-void
-asm_sel(void) __naked
-{
-    __asm__(ASM_ENTRY
-        "ld a,(_rpn_p3)\n ld e,a\n"
-        "1$:\n"
-        " ld h,b\n ld a,(hl)\n or a,a\n"
-        " ld h,c\n jr nz,2$\n"
-        " ld h,d\n"
-        "2$:\n"
-        " ld a,(hl)\n"
-        " ld h,e\n ld (hl),a\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* p0 = page, p1 = value; 4 bytes per loop, ~3 cycles a byte */
-void
-asm_fill(void) __naked
-{
-    __asm__(
-        "ld a,(_rpn_p0)\n ld h,a\n ld l,#0\n"
-        "ld a,(_rpn_p1)\n ld b,#64\n"
-        "1$:\n"
-        " ld (hl+),a\n ld (hl+),a\n ld (hl+),a\n ld (hl+),a\n"
-        " dec b\n jr nz,1$\n"
-        " ret\n");
-}
-
-/* p0 = page, p1 = k: page[v] = v * k by repeated addition */
-void
-asm_mul_table(void) __naked
-{
-    __asm__(
-        "ld a,(_rpn_p0)\n ld h,a\n ld l,#0\n"
-        "ld a,(_rpn_p1)\n ld e,a\n xor a,a\n"
-        "1$:\n"
-        " ld (hl),a\n add a,e\n"
-        " inc l\n jr nz,1$\n"
-        " ret\n");
-}
+void asm_add(void);
+void asm_sub(void);
+void asm_and(void);
+void asm_or(void);
+void asm_xor(void);
+void asm_lt(void);
+void asm_gt(void);
+void asm_eq(void);
+void asm_mul(void);
+void asm_shl(void);
+void asm_shr(void);
+void asm_lut(void);
+void asm_sel(void);
+void asm_fill(void);
+void asm_mul_table(void);
 
 /* NULL: no asm version, use the C loop */
 void (*const binop_asm[])(void) = {

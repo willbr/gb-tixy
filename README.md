@@ -77,7 +77,8 @@ value (`t`, numbers) or 256 values, so the per-token dispatch happens a few
 times a frame and the work is plain loops. Programs that only depend on `t`
 are computed once per frame.
 
-On the Game Boy the inner loops are hand-written SM83 assembly. Every
+On the Game Boy the inner loops are hand-written SM83 assembly
+(`src/rpn_gb.s`). Every
 256-value array (lookup tables in ROM, stack buffers in RAM) starts on a
 256-byte boundary, so element `n` of any array is at `page:n`: register L
 holds `n` and each access just loads that array's page into H. An add is

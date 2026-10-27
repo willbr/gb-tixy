@@ -316,30 +316,8 @@ update(void)
 #ifdef SDL
 #define copy_grid() set_bkg_tiles(2, 1, 16, 16, screen)
 #else
-/*
- * screen (a page) -> tilemap rows 1..16 at column 2. VRAM is writable in
- * modes 0 and 1; after seeing one there are at least ~20 cycles (mode 2)
- * before mode 3, enough for 2 bytes, so STAT is checked every 2 bytes.
- * Row starts are 0x9822 + 32 * row, and no row crosses a 256-byte boundary.
- */
-void
-copy_grid(void) __naked
-{
-    __asm__(
-        "ld a,(_screen + 1)\n ld h,a\n ld l,#0\n"
-        "ld de,#0x9822\n ld c,#16\n"
-        "1$:\n"
-        " ld b,#8\n"
-        "2$:\n"
-        " ldh a,(_STAT_REG + 0)\n and a,#2\n jr nz,2$\n"
-        " ld a,(hl+)\n ld (de),a\n inc e\n"
-        " ld a,(hl+)\n ld (de),a\n inc e\n"
-        " dec b\n jr nz,2$\n"
-        " ld a,e\n add a,#16\n ld e,a\n jr nc,3$\n inc d\n"
-        "3$:\n"
-        " dec c\n jr nz,1$\n"
-        " ret\n");
-}
+/* rpn_gb.s: screen -> tilemap rows 1..16 at column 2, safe outside vblank */
+void copy_grid(void);
 #endif
 
 
