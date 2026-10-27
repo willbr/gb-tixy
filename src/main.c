@@ -60,14 +60,25 @@ u8 cursor = 0;
 u8 last_op = OP_ADD;
 u8 last_num = NUM_BASE + 1;
 
-u8 prev_pad = 0;
-u8 hold = 0;
+/*
+ * Buttons are read every frame in the vblank interrupt, so taps shorter
+ * than an update aren't lost and repeat timing doesn't depend on how long
+ * the formula takes. pad_pressed collects new presses until input() takes
+ * them.
+ */
+volatile u8 pad_now = 0;
+volatile u8 pad_pressed = 0;
+u8 repeat_at = 0;
+
+#define DIRS          (J_UP | J_DOWN | J_LEFT | J_RIGHT)
+#define REPEAT_DELAY  15    /* frames before a held direction repeats */
+#define REPEAT_RATE   4     /* frames between repeats */
 
 u8 status_row[SCREEN_COLS];
 u8 prog_row[SCREEN_COLS];
 u8 text_dirty = 1;
 u8 loop_frames = 0;
-u16 last_time = 0;
+u8 last_time = 0;           /* low byte of sys_time: one byte, no torn reads */
 
 /* CGB background palette 0: background, positive, negative, unused */
 const palette_color_t tixy_palette[4] = {
@@ -114,7 +125,7 @@ put_2digits(u8 *dst, u8 v)
 void
 draw_text(void)
 {
-    u8 full[PROG_MAX * 5];
+    u8 full[PROG_MAX * (OP_TEXT_MAX + 1)];
     prog_t *p = &progs[formula_idx];
     u8 len = 0;
     u8 cur_end = 0;
@@ -159,6 +170,16 @@ draw_text(void)
 }
 
 
+/* vblank handler: latch new presses */
+void
+read_pad(void)
+{
+    u8 pad = joypad();
+    pad_pressed |= pad & ~pad_now;
+    pad_now = pad;
+}
+
+
 void
 init(void)
 {
@@ -196,9 +217,12 @@ init(void)
         prog_parse(&progs[y], gallery[y]);
     select_formula(0);
 
+    disable_interrupts();
+    add_VBL(read_pad);
     SHOW_BKG;
     enable_interrupts();
     DISPLAY_ON;
+    last_time = (u8)sys_time;
 }
 
 
@@ -211,22 +235,24 @@ init(void)
 void
 input(void)
 {
-    u8 pad = joypad();
-    u8 pressed = pad & ~prev_pad;
-    u8 dirs = pad & (J_UP | J_DOWN | J_LEFT | J_RIGHT);
+    u8 now = (u8)sys_time;
+    u8 pressed = 0;
+    u8 dirs = pad_now & DIRS;
     prog_t *p = &progs[formula_idx];
-    u8 *tok = &p->tok[cursor];
+    u8 *tok = NULL;
     u8 n = 0;
 
-    prev_pad = pad;
+    disable_interrupts();
+    pressed = pad_pressed;
+    pad_pressed = 0;
+    enable_interrupts();
 
-    if (dirs) {
-        if (hold != 255)
-            hold++;
-        if (hold > 12 && (hold & 1))
-            pressed |= dirs;
-    } else {
-        hold = 0;
+    /* a new direction press restarts the delay; held ones repeat on time */
+    if (pressed & DIRS) {
+        repeat_at = now + REPEAT_DELAY;
+    } else if (dirs && (u8)(now - repeat_at) < 128) {
+        pressed |= dirs;
+        repeat_at = now + REPEAT_RATE;
     }
 
     if (!pressed)
@@ -251,6 +277,9 @@ input(void)
         cursor--;
     if ((pressed & J_RIGHT) && cursor + 1 < p->len)
         cursor++;
+
+    /* after moving, so a move and a change in the same frame act together */
+    tok = &p->tok[cursor];
 
     if (p->len && (pressed & (J_UP | J_DOWN))) {
         if (IS_NUM(*tok)) {
@@ -337,13 +366,13 @@ draw_screen(void)
 void
 render(void)
 {
-    u16 now = 0;
+    u8 now = 0;
 
     /* no vblank wait: copy_grid checks STAT itself, so copy straight away */
     draw_screen();
 
     /* at most one update per frame; t wouldn't have changed */
-    while ((now = sys_time) == last_time)
+    while ((now = (u8)sys_time) == last_time)
         wait_vbl_done();
     /* only the counter changes here; rebuilding the program line is slow */
     if ((u8)(now - last_time) != loop_frames) {

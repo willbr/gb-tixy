@@ -73,6 +73,12 @@ typedef char ops_fit_below_num_base[OP_COUNT <= NUM_BASE ? 1 : -1];
 #define OP_OUT(name, text, in, out, kind, arg, fn)   out,
 #define OP_KIND(name, text, in, out, kind, arg, fn)  KIND_##kind,
 
+/* longest token text, sizing the editor's line buffer; numbers are <= 3 */
+#define OP_TEXT_MAX 4
+#define OP_TEXT_FITS(name, text, in, out, kind, arg, fn) \
+    typedef char op_text_fits_##name[sizeof(text) - 1 <= OP_TEXT_MAX ? 1 : -1];
+OPS(OP_TEXT_FITS)
+
 const char *const op_names[OP_COUNT] = { OPS(OP_TEXT) };
 const u8 op_in[OP_COUNT]   = { OPS(OP_IN) };     /* values popped */
 const u8 op_out[OP_COUNT]  = { OPS(OP_OUT) };    /* values pushed */
@@ -140,14 +146,14 @@ prog_ok(const prog_t *p)
 }
 
 
-/* "y 5 * t + sin" -> tokens; unknown words are skipped */
+/* "y 5 * t + sin" -> tokens; numbers clamp to NUM_MAX, unknown words are skipped */
 void
 prog_parse(prog_t *p, const char *s)
 {
     const char *w = NULL;
     u8 len = 0;
     u8 op = 0;
-    u8 v = 0;
+    u16 v = 0;
 
     p->len = 0;
     for (;;) {
@@ -163,9 +169,11 @@ prog_parse(prog_t *p, const char *s)
 
         if (*w >= '0' && *w <= '9') {
             v = 0;
-            while (w != s)
-                v = v * 10 + (*w++ - '0');
-            p->tok[p->len++] = NUM_BASE + (v > NUM_MAX ? NUM_MAX : v);
+            for (; w != s && *w >= '0' && *w <= '9'; w++)
+                if (v <= NUM_MAX)
+                    v = v * 10 + (*w - '0');
+            if (w == s)
+                p->tok[p->len++] = NUM_BASE + (v > NUM_MAX ? NUM_MAX : v);
             continue;
         }
 

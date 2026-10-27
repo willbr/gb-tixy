@@ -48,6 +48,8 @@ UINT8 BGP_REG = 0;
 
 UINT8 shim_memory[0x10000];
 UINT8 shim_pad = 0;
+UINT8 shim_latch = 0;    /* key-downs since the last joypad(), so taps aren't lost */
+void (*shim_vbl)(void) = NULL;
 
 /* GB colour index -> RGB, set by set_bkg_palette */
 UINT32 shim_palette[4];
@@ -113,6 +115,20 @@ enable_interrupts(void)
 
 
 void
+disable_interrupts(void)
+{
+}
+
+
+/* one handler, called once a frame from wait_vbl_done */
+void
+add_VBL(void (*h)(void))
+{
+    shim_vbl = h;
+}
+
+
+void
 cpu_fast(void)
 {
 }
@@ -121,7 +137,9 @@ cpu_fast(void)
 UINT8
 joypad(void)
 {
-    return shim_pad;
+    UINT8 pad = shim_pad | shim_latch;
+    shim_latch = 0;
+    return pad;
 }
 
 
@@ -137,6 +155,8 @@ wait_vbl_done(void)
 
     shim_prev_time = SDL_GetTicks();
     sys_time++;
+    if (shim_vbl)
+        shim_vbl();
 }
 
 
@@ -205,6 +225,7 @@ shim_update(void)
             if (event.key.keysym.sym == SDLK_ESCAPE)
                 exit(0);
             shim_pad |= shim_key_bit(event.key.keysym.sym);
+            shim_latch |= shim_key_bit(event.key.keysym.sym);
             break;
 
         case SDL_KEYUP:

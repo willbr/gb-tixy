@@ -41,8 +41,9 @@ def tables():
 def lcc():
     home = os.environ.get("GBDK_HOME")
     if home:
-        return os.path.join(home, "bin", "lcc")
-    path = shutil.which("lcc") or os.path.expanduser("~/opt/gbdk/bin/lcc")
+        path = os.path.join(home, "bin", "lcc")
+    else:
+        path = shutil.which("lcc") or os.path.expanduser("~/opt/gbdk/bin/lcc")
     if not os.path.exists(path):
         sys.exit("lcc not found: install GBDK-2020 and set GBDK_HOME or add its bin/ to PATH")
     return path
@@ -52,6 +53,9 @@ def lcc():
 # code must end below it
 TABLES_START = 0x7500
 
+# RAM variables must end here, leaving 1 KB for the stack below 0xe000
+RAM_LIMIT = 0xdc00
+
 
 def check_rom_layout():
     syms = {}
@@ -59,12 +63,15 @@ def check_rom_layout():
         p = line.split()
         if len(p) == 3 and p[0] == "DEF":
             syms[p[1]] = int(p[2], 16)
-    end = max(start + syms.get("l__" + name[3:], 0)
-              for name, start in syms.items()
-              if name.startswith("s__") and start < 0x8000
-              and not name[3:].startswith(("CABS", "HEADER")))
-    if end > TABLES_START:
-        sys.exit(f"ROM code ends at {end:#06x}, past the tables at {TABLES_START:#06x}")
+    areas = [(name[3:], start, start + syms.get("l__" + name[3:], 0))
+             for name, start in syms.items() if name.startswith("s__")]
+    rom_end = max(end for name, start, end in areas
+                  if start < 0x8000 and not name.startswith(("CABS", "HEADER")))
+    ram_end = max(end for name, start, end in areas if 0xc000 <= start < 0xe000)
+    if rom_end > TABLES_START:
+        sys.exit(f"ROM code ends at {rom_end:#06x}, past the tables at {TABLES_START:#06x}")
+    if ram_end > RAM_LIMIT:
+        sys.exit(f"RAM variables end at {ram_end:#06x}, past {RAM_LIMIT:#06x} (stack space)")
 
 
 def gb():
@@ -109,7 +116,8 @@ def gif():
     run(["ffmpeg", "-loglevel", "error", "-y",
          "-f", "rawvideo", "-pix_fmt", "bgra", "-s", "160x144", "-framerate", "60",
          "-i", "-", "-vf", vf, "-loop", "0", out], stdin=rec.stdout)
-    rec.wait()
+    if rec.wait():
+        sys.exit("recording failed")
 
 
 def open_rom():
@@ -120,7 +128,7 @@ def open_rom():
 def src_mtime():
     return max(os.path.getmtime(os.path.join(SRC, f))
                for f in os.listdir(SRC)
-               if f.endswith((".c", ".h")) and f != "tables.h")
+               if f.endswith((".c", ".h", ".s")) and f != "tables.h")
 
 
 def watch(target):
