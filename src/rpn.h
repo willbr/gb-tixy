@@ -9,20 +9,75 @@
  * and swap can share buffers safely.
  */
 
-enum {
-    OP_T, OP_X, OP_Y, OP_I,
-    OP_SIN, OP_COS, OP_TAN, OP_ATAN, OP_SQRT, OP_NEG, OP_ABS,
-    OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_AND, OP_OR, OP_XOR, OP_SHL, OP_SHR,
-    OP_LT, OP_GT, OP_EQ,
-    OP_SEL,
-    OP_DUP, OP_SWAP,
-    OP_COUNT
-};
+/*
+ * The operators, one row each; the enum and every per-op table are
+ * generated from this list. The order is the editor's Up/Down order.
+ *
+ *   VAR     push `arg` (x, y, i: ROM tables), or t when arg is 0
+ *   UNARY   lookup: arg is the table
+ *   BINARY  arg is the expression in a and b; fn is the rpn_gb.s loop,
+ *           0 to use the C loop on the GB too
+ *   STACK   handled in prog_eval
+ *
+ * Divide by zero gives 0. Shifts past 7 give 0 (<<) or the sign (>>).
+ * Comparisons give 127 (a full circle) or 0.
+ */
+#define OPS(F)                                                         \
+    /* name  text    in out kind    arg                       fn */    \
+    F(T,    "t",    0, 1, VAR,    0,                         0)       \
+    F(X,    "x",    0, 1, VAR,    cell_x,                    0)       \
+    F(Y,    "y",    0, 1, VAR,    cell_y,                    0)       \
+    F(I,    "i",    0, 1, VAR,    cell_i,                    0)       \
+    F(SIN,  "sin",  1, 1, UNARY,  sin_table,                 0)       \
+    F(COS,  "cos",  1, 1, UNARY,  cos_table,                 0)       \
+    F(TAN,  "tan",  1, 1, UNARY,  tan_table,                 0)       \
+    F(ATAN, "atan", 1, 1, UNARY,  atan_table,                0)       \
+    F(SQRT, "sqrt", 1, 1, UNARY,  sqrt_table,                0)       \
+    F(NEG,  "neg",  1, 1, UNARY,  neg_table,                 0)       \
+    F(ABS,  "abs",  1, 1, UNARY,  abs_table,                 0)       \
+    F(ADD,  "+",    2, 1, BINARY, a + b,                     asm_add) \
+    F(SUB,  "-",    2, 1, BINARY, a - b,                     asm_sub) \
+    F(MUL,  "*",    2, 1, BINARY, a * b,                     asm_mul) \
+    F(DIV,  "/",    2, 1, BINARY, b ? a / b : 0,             0)       \
+    F(MOD,  "%",    2, 1, BINARY, b ? a % b : 0,             0)       \
+    F(AND,  "&",    2, 1, BINARY, a & b,                     asm_and) \
+    F(OR,   "|",    2, 1, BINARY, a | b,                     asm_or)  \
+    F(XOR,  "^",    2, 1, BINARY, a ^ b,                     asm_xor) \
+    F(SHL,  "<<",   2, 1, BINARY, (u8)b > 7 ? 0 : a << b,    asm_shl) \
+    F(SHR,  ">>",   2, 1, BINARY, a >> ((u8)b > 7 ? 7 : b),  asm_shr) \
+    F(LT,   "<",    2, 1, BINARY, a < b ? 127 : 0,           asm_lt)  \
+    F(GT,   ">",    2, 1, BINARY, a > b ? 127 : 0,           asm_gt)  \
+    F(EQ,   "=",    2, 1, BINARY, a == b ? 127 : 0,          asm_eq)  \
+    F(SEL,  "?",    3, 1, STACK,  0,                         0)       \
+    F(DUP,  "dup",  1, 2, STACK,  0,                         0)       \
+    F(SWAP, "swap", 2, 2, STACK,  0,                         0)
+
+/*
+ * Generators. `name` is always pasted (OP_##name, s_##name) before it
+ * reaches another macro, so a header macro called ADD or I can't expand it.
+ */
+#define OP_ENUM(name, text, in, out, kind, arg, fn)  OP_##name,
+enum { OPS(OP_ENUM) OP_COUNT };
+
+enum { KIND_VAR, KIND_UNARY, KIND_BINARY, KIND_STACK };
 
 /* tokens NUM_BASE + n push the literal n, 0..127 */
 #define NUM_BASE 32
 #define NUM_MAX  127
 #define IS_NUM(tok) ((tok) >= NUM_BASE)
+
+typedef char ops_fit_below_num_base[OP_COUNT <= NUM_BASE ? 1 : -1];
+
+#define OP_TEXT(name, text, in, out, kind, arg, fn)  text,
+#define OP_IN(name, text, in, out, kind, arg, fn)    in,
+#define OP_OUT(name, text, in, out, kind, arg, fn)   out,
+#define OP_KIND(name, text, in, out, kind, arg, fn)  KIND_##kind,
+
+const char *const op_names[OP_COUNT] = { OPS(OP_TEXT) };
+const u8 op_in[OP_COUNT]   = { OPS(OP_IN) };     /* values popped */
+const u8 op_out[OP_COUNT]  = { OPS(OP_OUT) };    /* values pushed */
+const u8 op_kind[OP_COUNT] = { OPS(OP_KIND) };
+
 
 #define PROG_MAX  24
 #define STACK_MAX 6
@@ -31,34 +86,6 @@ typedef struct {
     u8 len;
     u8 tok[PROG_MAX];
 } prog_t;
-
-const char *const op_names[OP_COUNT] = {
-    "t", "x", "y", "i",
-    "sin", "cos", "tan", "atan", "sqrt", "neg", "abs",
-    "+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>",
-    "<", ">", "=",
-    "?",
-    "dup", "swap",
-};
-
-/* stack effect: values popped, values pushed */
-const u8 op_in[OP_COUNT] = {
-    0, 0, 0, 0,
-    1, 1, 1, 1, 1, 1, 1,
-    2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-    2, 2, 2,
-    3,
-    1, 2,
-};
-
-const u8 op_out[OP_COUNT] = {
-    1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1,
-    1,
-    2, 2,
-};
 
 
 /*
@@ -173,22 +200,26 @@ tok_text(u8 tok, u8 *out)
 }
 
 
-/* unary ops are all table lookups */
-const i8 *const unary_lut[] = {
-    sin_table, cos_table, tan_table, atan_table, sqrt_table, neg_table, abs_table,
-};
+/* VAR and UNARY rows: the table pushed or looked up; 0 for the rest */
+#define ARG_VAR(arg)     arg
+#define ARG_UNARY(arg)   arg
+#define ARG_BINARY(arg)  0
+#define ARG_STACK(arg)   0
+#define OP_TABLE(name, text, in, out, kind, arg, fn)  ARG_##kind(arg),
+
+const i8 *const op_table[OP_COUNT] = { OPS(OP_TABLE) };
 
 
 /*
- * Binary ops: a scalar version and a 256-wide version from one expression.
- * Divide by zero gives 0. Shifts past 7 give 0 (<<) or the sign (>>).
- * Comparisons give 127 (a full circle) or 0.
- * On the GB the 256-wide versions are the reference; the asm below is used
- * for everything but / and %.
+ * BINARY rows: a scalar version and a 256-wide version from one expression.
+ * The 256-wide C loops are the SDL path and the reference for rpn_gb.s.
  */
-#define BINOP(name, expr)                                          \
-    i8 s_##name(i8 a, i8 b) { return (expr); }                     \
-    void v_##name(i8 *d, const i8 *pa, const i8 *pb)               \
+#define DEFINE_VAR(s_fn, v_fn, expr)
+#define DEFINE_UNARY(s_fn, v_fn, expr)
+#define DEFINE_STACK(s_fn, v_fn, expr)
+#define DEFINE_BINARY(s_fn, v_fn, expr)                            \
+    i8 s_fn(i8 a, i8 b) { return (expr); }                         \
+    void v_fn(i8 *d, const i8 *pa, const i8 *pb)                   \
     {                                                              \
         u8 n = 0;                                                  \
         i8 a, b;                                                   \
@@ -198,29 +229,19 @@ const i8 *const unary_lut[] = {
             *d++ = (expr);                                         \
         } while (++n);                                             \
     }
+#define OP_DEFINE(name, text, in, out, kind, arg, fn)  DEFINE_##kind(s_##name, v_##name, arg)
 
-BINOP(add, a + b)
-BINOP(sub, a - b)
-BINOP(mul, a * b)
-BINOP(div, b ? a / b : 0)
-BINOP(mod, b ? a % b : 0)
-BINOP(and, a & b)
-BINOP(or,  a | b)
-BINOP(xor, a ^ b)
-BINOP(shl, (u8)b > 7 ? 0 : a << b)
-BINOP(shr, a >> ((u8)b > 7 ? 7 : b))
-BINOP(lt,  a < b ? 127 : 0)
-BINOP(gt,  a > b ? 127 : 0)
-BINOP(eq,  a == b ? 127 : 0)
+OPS(OP_DEFINE)
 
-i8 (*const binop_s[])(i8, i8) = {
-    s_add, s_sub, s_mul, s_div, s_mod, s_and, s_or, s_xor, s_shl, s_shr,
-    s_lt, s_gt, s_eq,
-};
-void (*const binop_v[])(i8 *, const i8 *, const i8 *) = {
-    v_add, v_sub, v_mul, v_div, v_mod, v_and, v_or, v_xor, v_shl, v_shr,
-    v_lt, v_gt, v_eq,
-};
+#define FN_VAR(f)     0
+#define FN_UNARY(f)   0
+#define FN_BINARY(f)  f
+#define FN_STACK(f)   0
+#define OP_S(name, text, in, out, kind, arg, fn)  FN_##kind(s_##name),
+#define OP_V(name, text, in, out, kind, arg, fn)  FN_##kind(v_##name),
+
+i8 (*const binop_s[OP_COUNT])(i8, i8) = { OPS(OP_S) };
+void (*const binop_v[OP_COUNT])(i8 *, const i8 *, const i8 *) = { OPS(OP_V) };
 
 
 #ifdef SDL
@@ -298,11 +319,10 @@ void asm_sel(void);
 void asm_fill(void);
 void asm_mul_table(void);
 
-/* NULL: no asm version, use the C loop */
-void (*const binop_asm[])(void) = {
-    asm_add, asm_sub, asm_mul, NULL, NULL, asm_and, asm_or, asm_xor, asm_shl, asm_shr,
-    asm_lt, asm_gt, asm_eq,
-};
+/* the fn column; 0: no asm version, use the C loop */
+#define OP_ASM(name, text, in, out, kind, arg, fn)  FN_##kind(fn),
+
+void (*const binop_asm[OP_COUNT])(void) = { OPS(OP_ASM) };
 
 void
 run_fill(void *d, i8 v)
@@ -414,61 +434,27 @@ prog_eval(const prog_t *p, i8 t, u8 *out)
             continue;
         }
 
-        switch (op) {
-        case OP_T:
-            stack_arr[sp] = NULL;
+        switch (op_kind[op]) {
+        case KIND_VAR:
+            stack_arr[sp] = op_table[op];    /* 0 for t: a scalar */
             stack_val[sp] = t;
             sp++;
             break;
 
-        case OP_X: stack_arr[sp++] = cell_x; break;
-        case OP_Y: stack_arr[sp++] = cell_y; break;
-        case OP_I: stack_arr[sp++] = cell_i; break;
-
-        case OP_SIN: case OP_COS: case OP_TAN: case OP_ATAN:
-        case OP_SQRT: case OP_NEG: case OP_ABS:
+        case KIND_UNARY:
             k = sp - 1;
-            op -= OP_SIN;
             if (stack_arr[k]) {
                 d = free_buf(sp);
-                run_lut(d, stack_arr[k], unary_lut[op]);
+                run_lut(d, stack_arr[k], op_table[op]);
                 stack_arr[k] = d;
             } else {
-                stack_val[k] = unary_lut[op][(u8)stack_val[k]];
+                stack_val[k] = op_table[op][(u8)stack_val[k]];
             }
             break;
 
-        case OP_SEL:
-            k = sp - 3;
-            if (stack_arr[k] || stack_arr[k + 1] || stack_arr[k + 2]) {
-                d = free_buf(sp);
-                run_sel(d, slot_arr(k, 0), slot_arr(k + 1, 1), slot_arr(k + 2, 2));
-                stack_arr[k] = d;
-            } else {
-                stack_val[k] = stack_val[k] ? stack_val[k + 1] : stack_val[k + 2];
-            }
-            sp -= 2;
-            break;
-
-        case OP_DUP:
-            stack_arr[sp] = stack_arr[sp - 1];
-            stack_val[sp] = stack_val[sp - 1];
-            sp++;
-            break;
-
-        case OP_SWAP:
-            a = stack_arr[sp - 1];
-            stack_arr[sp - 1] = stack_arr[sp - 2];
-            stack_arr[sp - 2] = a;
-            k = stack_val[sp - 1];
-            stack_val[sp - 1] = stack_val[sp - 2];
-            stack_val[sp - 2] = k;
-            break;
-
-        default: /* binary */
+        case KIND_BINARY:
             k = sp - 2;
-            op -= OP_ADD;
-            if (op == OP_MUL - OP_ADD && !stack_arr[k] != !stack_arr[k + 1]) {
+            if (op == OP_MUL && !stack_arr[k] != !stack_arr[k + 1]) {
                 /* array * scalar: build v * k once, then a lookup */
                 a = stack_arr[k] ? stack_arr[k] : stack_arr[k + 1];
                 run_mul_table(bcast[0], stack_arr[k] ? stack_val[k + 1] : stack_val[k]);
@@ -483,6 +469,37 @@ prog_eval(const prog_t *p, i8 t, u8 *out)
                 stack_val[k] = binop_s[op](stack_val[k], stack_val[k + 1]);
             }
             sp--;
+            break;
+
+        default: /* KIND_STACK */
+            switch (op) {
+            case OP_SEL:
+                k = sp - 3;
+                if (stack_arr[k] || stack_arr[k + 1] || stack_arr[k + 2]) {
+                    d = free_buf(sp);
+                    run_sel(d, slot_arr(k, 0), slot_arr(k + 1, 1), slot_arr(k + 2, 2));
+                    stack_arr[k] = d;
+                } else {
+                    stack_val[k] = stack_val[k] ? stack_val[k + 1] : stack_val[k + 2];
+                }
+                sp -= 2;
+                break;
+
+            case OP_DUP:
+                stack_arr[sp] = stack_arr[sp - 1];
+                stack_val[sp] = stack_val[sp - 1];
+                sp++;
+                break;
+
+            case OP_SWAP:
+                a = stack_arr[sp - 1];
+                stack_arr[sp - 1] = stack_arr[sp - 2];
+                stack_arr[sp - 2] = a;
+                k = stack_val[sp - 1];
+                stack_val[sp - 1] = stack_val[sp - 2];
+                stack_val[sp - 2] = k;
+                break;
+            }
             break;
         }
     }
