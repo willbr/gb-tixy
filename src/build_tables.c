@@ -2,7 +2,9 @@
 #include <math.h>
 
 /*
- * Angles are in units of pi/127, so 127 == pi.
+ * Angles are in units of pi/128, so 128 == pi and a full turn is 256: angles
+ * wrap exactly with i8/u8 arithmetic, and cos(a) == sin(a + 64).
+ * Outputs are scaled by 127 to fit an i8.
  * Every table has 256 entries in u8 order: index k holds f((signed char)k),
  * i.e. 0..127 first, then -128..-1. Look up with table[(u8)i].
  */
@@ -70,11 +72,10 @@ to_i8(double d)
 }
 
 
-double angle_sin(double i) { return sin(i * (M_PI/127.0)) * 127; }
-double angle_cos(double i) { return cos(i * (M_PI/127.0)) * 127; }
-double angle_tan(double i) { return tan(i * (M_PI/127.0)) * 127; }
+double angle_sin(double i) { return sin(i * (M_PI/128.0)) * 127; }
+double angle_tan(double i) { return tan(i * (M_PI/128.0)) * 127; }
 /* input scaled like an angle, output is an angle: range about +-51 */
-double angle_atan(double i) { return atan(i * (M_PI/127.0)) * (127.0/M_PI); }
+double angle_atan(double i) { return atan(i * (M_PI/128.0)) * (128.0/M_PI); }
 double int_sqrt(double i) { return i < 0 ? 0 : floor(sqrt(i)); }
 
 
@@ -101,7 +102,6 @@ main(void)
 {
     calc_circles();
     calc_table("sin_table",  angle_sin);
-    calc_table("cos_table",  angle_cos);
     calc_table("tan_table",  angle_tan);
     calc_table("atan_table", angle_atan);
     calc_table("sqrt_table", int_sqrt);

@@ -35,7 +35,7 @@ Each visualisation is `FORMULA(name, expr)` in `main.c`, which expands to a func
 `src/build_tables.c` runs at build time and emits `src/tables.h`:
 
 1. `circle_gfx[]` — 256 8×8 tiles, tile n = the circle for value `(i8)n`, so a formula's result is written straight into the tilemap. Circle radius grows with |v| (snapped to round shapes, max 7px, 1px gap); colour 1 for positive, 2 for negative, 0 background. Both 128-tile halves are uploaded in `init()`.
-2. `sin_table`, `cos_table`, `tan_table`, `atan_table`, `sqrt_table` — 256 `i8` entries, **stored in u8 order** (index k holds f((i8)k)), looked up as `table[(u8)i]` by `gb_sin` etc. in `shared.h`. Angles are in units of π/127 (127 ≈ π); `atan` returns an angle (±51). Values are rounded and clamped to i8.
+2. `sin_table`, `tan_table`, `atan_table`, `sqrt_table` — 256 `i8` entries, **stored in u8 order** (index k holds f((i8)k)). `gb_sin` etc. in `shared.h` are macros (`table[(u8)(i)]`) because SDCC won't inline functions. Angles are in units of π/128 (128 = π, full turn = 256, so they wrap exactly); `gb_cos(i)` is `sin_table[(u8)(i + 64)]`. Outputs are ×127; `atan` returns an angle (±51). Values are rounded and clamped to i8.
 
 Inside formulas use `gb_sin(t)` etc., not `<math.h>` — the GB has no FPU.
 

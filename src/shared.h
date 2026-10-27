@@ -5,40 +5,15 @@ typedef   signed char i8;
 #ifdef INCLUDE_TABLES
 #include "tables.h"
 
-/* tables are stored in u8 order (0..127, -128..-1) so the cast is the index */
-
-i8
-gb_sin(i8 i)
-{
-    return sin_table[(u8)i];
-}
-
-i8
-gb_cos(i8 i)
-{
-    return cos_table[(u8)i];
-}
-
-
-i8
-gb_tan(i8 i)
-{
-    return tan_table[(u8)i];
-}
-
-
-i8
-gb_atan(i8 i)
-{
-    return atan_table[(u8)i];
-}
-
-
-i8
-gb_sqrt(i8 i)
-{
-    return sqrt_table[(u8)i];
-}
-
+/*
+ * Macros, not functions: SDCC won't inline, so each lookup would be a call.
+ * Tables are stored in u8 order (0..127, -128..-1) so the cast is the index.
+ * Angles: 128 == pi, so cos is sin a quarter turn (64) later.
+ */
+#define gb_sin(i)  sin_table[(u8)(i)]
+#define gb_cos(i)  sin_table[(u8)((i) + 64)]
+#define gb_tan(i)  tan_table[(u8)(i)]
+#define gb_atan(i) atan_table[(u8)(i)]
+#define gb_sqrt(i) sqrt_table[(u8)(i)]
 
 #endif

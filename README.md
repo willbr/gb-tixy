@@ -39,7 +39,8 @@ Formulas live in `src/main.c`:
 
 Everything is 8-bit: values are `i8` (−128..127, wrapping), ±127 is a full
 size circle, and `t` counts frames. There's no FPU, so trig comes from lookup
-tables (`gb_sin`, `gb_cos`, `gb_tan`, `gb_atan`, `gb_sqrt`) where 127 ≈ π.
+tables (`gb_sin`, `gb_cos`, `gb_tan`, `gb_atan`, `gb_sqrt`) where 128 = π, so a
+full turn is 256 and angles wrap for free.
 To port a tixy expression, convert radians to those units, e.g.
 `Math.sin(y/8+t)` → `gb_sin(y*5 + t)`.
 
