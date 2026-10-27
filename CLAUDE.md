@@ -34,7 +34,9 @@ Formulas are RPN token programs, editable on the device. `gallery[]` in `main.c`
 
 `t` is `(i8)sys_time`, so animation speed doesn't depend on how long evaluation takes. Screen: row 0 status (`draw_text`: formula, run/edit, `err`, frames per update), rows 1–16 the grid at column 2, row 17 the program scrolled to the cursor.
 
-Performance (PyBoy, CGB): ~3–35 fps; each 256-wide array op costs ~0.7 frame because SDCC keeps the loop pointers on the stack. Programs depending only on `t` are nearly free. Comparison operators return 127/0.
+On the GB the 256-wide loops are SM83 asm (naked functions with `__asm__` strings in `rpn.h`, args are page numbers in globals `rpn_p0..p3`). Every array is page-aligned: ROM tables via `TABLE_AT(addr)` (`__at` on GB, empty under SDL; pages 0x7500–0x7FFF, see `PAGE_*` in `build_tables.c`), RAM buffers from `arena` aligned in `rpn_init()`. The loops keep `n` in L and swap the array's page into H per access. Asm covers `+ - * & | ^ << >> < > = ?`, lookups (`asm_lut`), fill and the `v*k` table used for array×scalar multiply; `/ %` fall back to the C `v_` loops. `copy_grid` writes the screen page to VRAM checking STAT every 2 bytes (GBDK's `set_bkg_tiles` was ~1 frame). The C loops (SDL) are the reference: any asm change must still match them exactly. `build.py gb` fails if ROM code grows past `TABLES_START` (0x7500).
+
+Performance (PyBoy, CGB): 12–60 fps across the gallery. Comparison operators return 127/0.
 
 `src/record.c` includes `main.c` and renders headless for `./build.py gif`.
 
@@ -45,11 +47,13 @@ Performance (PyBoy, CGB): ~3–35 fps; each 256-wide array op costs ~0.7 frame b
 1. `circle_gfx[]` — 13 tiles: 0 empty, 1–6 positive sizes (colour 1), 7–12 negative (colour 2). `value_to_tile[256]` maps an `i8` value to its tile (radius ∝ |v|, snapped to round shapes, max 7px, 1px gap).
 2. `font_gfx` / `font_hi_gfx` — 5×8 font for ASCII 32–127 in colour 1 / colour 2, uploaded to tiles 32–127 and 160–255, so text is ASCII and `| 0x80` highlights. Glyphs are ASCII-art strings in `glyphs[]`.
 3. `cell_x`, `cell_y`, `cell_i` — per-cell coordinates for the interpreter.
-4. `sin_table`, `tan_table`, `atan_table`, `sqrt_table`, `neg_table`, `abs_table` — 256 `i8` entries **in u8 order** (index k holds f((i8)k)), looked up as `table[(u8)v]`. Angles are π/128 units (128 = π, full turn = 256); cos is `sin_table[(u8)(v + 64)]`. Outputs ×127, rounded and clamped (neg/abs of −128 give 127).
+4. `sin_table`, `cos_table`, `tan_table`, `atan_table`, `sqrt_table`, `neg_table`, `abs_table` — 256 `i8` entries **in u8 order** (index k holds f((i8)k)), looked up as `table[(u8)v]`. Angles are π/128 units (128 = π, full turn = 256). Outputs ×127, rounded and clamped (neg/abs of −128 give 127).
+
+`tables.h` starts with the `TABLE_AT` definition; the page-aligned tables (cells, value_to_tile, the seven LUTs) are declared `TABLE_AT(0x7500..0x7f00)`.
 
 ### Game Boy constraints
 
 - Grid values are `i8`; assume 8-bit wraparound.
 - A formula's value sets circle size: ±127 is full size, so small-range expressions (e.g. `y x -`) draw small dots — scale them up (`3 <<`) to taste.
 - `* / %` call SDCC software routines per element; prefer `&`/shifts.
-- To measure on real (emulated) hardware, PyBoy can run the ROM headless; `lcc -Wl-j` writes a `.noi` symbol file with RAM addresses (e.g. `_loop_frames`).
+- To measure on real (emulated) hardware, PyBoy can run the ROM headless; `build.py gb` writes `build/tixy.noi` with symbol addresses (e.g. `_loop_frames`, `_render` for hooks).

@@ -61,10 +61,34 @@ const u8 op_out[OP_COUNT] = {
 };
 
 
-i8 pool[STACK_MAX + 1][256];
-i8 bcast[3][256];
+/*
+ * Every 256-value array starts on a 256-byte boundary (the ROM tables are
+ * placed with TABLE_AT, the RAM buffers come from the aligned arena), so
+ * element n of any array is page:n and the GB asm loops index them all
+ * with the one register L.
+ */
+#define NUM_PAGES (STACK_MAX + 1 + 3 + 1)   /* pool, bcast, screen */
+
+u8 arena[(NUM_PAGES + 1) * 256];
+i8 *pool[STACK_MAX + 1];
+i8 *bcast[3];
 const i8 *stack_arr[STACK_MAX];   /* NULL: the slot is the scalar stack_val */
 i8 stack_val[STACK_MAX];
+
+
+/* carve the arena into pages; returns the page for the screen tiles */
+u8 *
+rpn_init(void)
+{
+    u8 *page = (u8 *)(((size_t)arena + 255) & ~(size_t)255);
+    u8 k = 0;
+
+    for (k = 0; k != STACK_MAX + 1; k += 1, page += 256)
+        pool[k] = (i8 *)page;
+    for (k = 0; k != 3; k += 1, page += 256)
+        bcast[k] = (i8 *)page;
+    return page;
+}
 
 
 /* 1 if the program never underflows or overflows and leaves a value */
@@ -149,26 +173,18 @@ tok_text(u8 tok, u8 *out)
 }
 
 
-/* unary ops are all table lookups: sin(a), cos(a) = sin(a + 64), ... */
+/* unary ops are all table lookups */
 const i8 *const unary_lut[] = {
-    sin_table, sin_table, tan_table, atan_table, sqrt_table, neg_table, abs_table,
+    sin_table, cos_table, tan_table, atan_table, sqrt_table, neg_table, abs_table,
 };
-const u8 unary_off[] = { 0, 64, 0, 0, 0, 0, 0 };
-
-void
-lut_loop(i8 *d, const i8 *a, const i8 *lut, u8 off)
-{
-    u8 n = 0;
-    do {
-        *d++ = lut[(u8)(*a++ + off)];
-    } while (++n);
-}
 
 
 /*
  * Binary ops: a scalar version and a 256-wide version from one expression.
  * Divide by zero gives 0. Shifts past 7 give 0 (<<) or the sign (>>).
  * Comparisons give 127 (a full circle) or 0.
+ * On the GB the 256-wide versions are the reference; the asm below is used
+ * for everything but / and %.
  */
 #define BINOP(name, expr)                                          \
     i8 s_##name(i8 a, i8 b) { return (expr); }                     \
@@ -207,9 +223,46 @@ void (*const binop_v[])(i8 *, const i8 *, const i8 *) = {
 };
 
 
+#ifdef SDL
+
+void
+run_fill(void *d, i8 v)
+{
+    memset(d, v, 256);
+}
+
+/* d[v] = v * k for every v: array * scalar becomes a lookup */
+void
+run_mul_table(i8 *d, i8 k)
+{
+    u8 n = 0;
+    i8 acc = 0;
+    do {
+        d[n] = acc;
+        acc += k;
+    } while (++n);
+}
+
+void
+run_lut(void *d, const i8 *a, const void *lut)
+{
+    u8 *pd = d;
+    const u8 *l = lut;
+    u8 n = 0;
+    do {
+        *pd++ = l[(u8)*a++];
+    } while (++n);
+}
+
+void
+run_bin(u8 op, i8 *d, const i8 *a, const i8 *b)
+{
+    binop_v[op](d, a, b);
+}
+
 /* c ? a : b */
 void
-sel_loop(i8 *d, const i8 *c, const i8 *a, const i8 *b)
+run_sel(i8 *d, const i8 *c, const i8 *a, const i8 *b)
 {
     u8 n = 0;
     do {
@@ -219,26 +272,278 @@ sel_loop(i8 *d, const i8 *c, const i8 *a, const i8 *b)
     } while (++n);
 }
 
+#else
 
 /*
- * A pool buffer that none of the first `live` slots point at. live <= STACK_MAX
- * slots can hold at most STACK_MAX buffers, so if the first STACK_MAX are all
- * taken the last one is free.
+ * SM83 loops over 256 page-aligned values. Arguments are page numbers
+ * (address >> 8) passed in these globals. L is the index n; each access
+ * loads the array's page into H, so element n of page P is (P:n).
+ * Binary ops: p0 = a, p1 = b, p2 = dest, held in B, C, D; E is scratch.
+ * Loops end when L wraps to 0.
  */
+u8 rpn_p0, rpn_p1, rpn_p2, rpn_p3;
+
+#define PAGE(ptr) ((u8)((size_t)(ptr) >> 8))
+
+#define ASM_ENTRY                                                  \
+    "ld a,(_rpn_p0)\n ld b,a\n"                                    \
+    "ld a,(_rpn_p1)\n ld c,a\n"                                    \
+    "ld a,(_rpn_p2)\n ld d,a\n"                                    \
+    "ld l,#0\n"
+
+/* d = a OP b for ops that take (hl) directly: 13 cycles per value */
+#define ASM_BINOP(name, insn)                                      \
+    void name(void) __naked                                        \
+    {                                                              \
+        __asm__(ASM_ENTRY                                          \
+            "1$:\n"                                                \
+            " ld h,b\n ld a,(hl)\n"                                 \
+            " ld h,c\n " insn " a,(hl)\n"                           \
+            " ld h,d\n ld (hl),a\n"                                 \
+            " inc l\n jr nz,1$\n"                                   \
+            " ret\n");                                             \
+    }
+
+ASM_BINOP(asm_add, "add")
+ASM_BINOP(asm_sub, "sub")
+ASM_BINOP(asm_and, "and")
+ASM_BINOP(asm_or,  "or")
+ASM_BINOP(asm_xor, "xor")
+
+/* signed compares: flip the sign bits and compare unsigned; carry -> 127 */
+void
+asm_lt(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "1$:\n"
+        " ld h,c\n ld a,(hl)\n xor a,#0x80\n ld e,a\n"
+        " ld h,b\n ld a,(hl)\n xor a,#0x80\n"
+        " cp a,e\n sbc a,a\n and a,#0x7f\n"
+        " ld h,d\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+void
+asm_gt(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "1$:\n"
+        " ld h,b\n ld a,(hl)\n xor a,#0x80\n ld e,a\n"
+        " ld h,c\n ld a,(hl)\n xor a,#0x80\n"
+        " cp a,e\n sbc a,a\n and a,#0x7f\n"
+        " ld h,d\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* a - b - 1 borrows only when a == b */
+void
+asm_eq(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "1$:\n"
+        " ld h,c\n ld e,(hl)\n"
+        " ld h,b\n ld a,(hl)\n"
+        " sub a,e\n sub a,#1\n sbc a,a\n and a,#0x7f\n"
+        " ld h,d\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* shift-and-add on the low byte; H is the multiplier between page loads */
+void
+asm_mul(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "1$:\n"
+        " ld h,c\n ld a,(hl)\n"
+        " ld h,b\n ld e,(hl)\n"
+        " ld h,a\n xor a,a\n"
+        "2$:\n"
+        " srl h\n jr nc,3$\n add a,e\n"
+        "3$:\n"
+        " sla e\n inc h\n dec h\n jr nz,2$\n"
+        " ld h,d\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* counts 8..255 (and negative) give 0 */
+void
+asm_shl(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "1$:\n"
+        " ld h,c\n ld a,(hl)\n cp a,#8\n jr c,2$\n"
+        " xor a,a\n jr 5$\n"
+        "2$:\n"
+        " ld e,a\n ld h,b\n ld a,(hl)\n inc e\n jr 4$\n"
+        "3$:\n"
+        " add a,a\n"
+        "4$:\n"
+        " dec e\n jr nz,3$\n"
+        "5$:\n"
+        " ld h,d\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* counts 8..255 (and negative) shift by 7 */
+void
+asm_shr(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "1$:\n"
+        " ld h,c\n ld a,(hl)\n cp a,#8\n jr c,2$\n"
+        " ld a,#7\n"
+        "2$:\n"
+        " ld e,a\n ld h,b\n ld a,(hl)\n inc e\n jr 4$\n"
+        "3$:\n"
+        " sra a\n"
+        "4$:\n"
+        " dec e\n jr nz,3$\n"
+        " ld h,d\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* d = lut[a]: p0 = a, p1 = dest, p2 = lut; DE addresses the lut */
+void
+asm_lut(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "1$:\n"
+        " ld h,b\n ld e,(hl)\n"
+        " ld a,(de)\n"
+        " ld h,c\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* d = c ? a : b: p0 = c, p1 = a, p2 = b, p3 = dest in B, C, D, E */
+void
+asm_sel(void) __naked
+{
+    __asm__(ASM_ENTRY
+        "ld a,(_rpn_p3)\n ld e,a\n"
+        "1$:\n"
+        " ld h,b\n ld a,(hl)\n or a,a\n"
+        " ld h,c\n jr nz,2$\n"
+        " ld h,d\n"
+        "2$:\n"
+        " ld a,(hl)\n"
+        " ld h,e\n ld (hl),a\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* p0 = page, p1 = value; 4 bytes per loop, ~3 cycles a byte */
+void
+asm_fill(void) __naked
+{
+    __asm__(
+        "ld a,(_rpn_p0)\n ld h,a\n ld l,#0\n"
+        "ld a,(_rpn_p1)\n ld b,#64\n"
+        "1$:\n"
+        " ld (hl+),a\n ld (hl+),a\n ld (hl+),a\n ld (hl+),a\n"
+        " dec b\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* p0 = page, p1 = k: page[v] = v * k by repeated addition */
+void
+asm_mul_table(void) __naked
+{
+    __asm__(
+        "ld a,(_rpn_p0)\n ld h,a\n ld l,#0\n"
+        "ld a,(_rpn_p1)\n ld e,a\n xor a,a\n"
+        "1$:\n"
+        " ld (hl),a\n add a,e\n"
+        " inc l\n jr nz,1$\n"
+        " ret\n");
+}
+
+/* NULL: no asm version, use the C loop */
+void (*const binop_asm[])(void) = {
+    asm_add, asm_sub, asm_mul, NULL, NULL, asm_and, asm_or, asm_xor, asm_shl, asm_shr,
+    asm_lt, asm_gt, asm_eq,
+};
+
+void
+run_fill(void *d, i8 v)
+{
+    rpn_p0 = PAGE(d);
+    rpn_p1 = v;
+    asm_fill();
+}
+
+void
+run_mul_table(i8 *d, i8 k)
+{
+    rpn_p0 = PAGE(d);
+    rpn_p1 = k;
+    asm_mul_table();
+}
+
+void
+run_lut(void *d, const i8 *a, const void *lut)
+{
+    rpn_p0 = PAGE(a);
+    rpn_p1 = PAGE(d);
+    rpn_p2 = PAGE(lut);
+    asm_lut();
+}
+
+void
+run_bin(u8 op, i8 *d, const i8 *a, const i8 *b)
+{
+    if (!binop_asm[op]) {
+        binop_v[op](d, a, b);
+        return;
+    }
+    rpn_p0 = PAGE(a);
+    rpn_p1 = PAGE(b);
+    rpn_p2 = PAGE(d);
+    binop_asm[op]();
+}
+
+void
+run_sel(i8 *d, const i8 *c, const i8 *a, const i8 *b)
+{
+    rpn_p0 = PAGE(c);
+    rpn_p1 = PAGE(a);
+    rpn_p2 = PAGE(b);
+    rpn_p3 = PAGE(d);
+    asm_sel();
+}
+
+#endif
+
+
+/*
+ * A pool buffer that none of the first `live` slots point at. Pool pages are
+ * consecutive, so a slot's pool index is its page number minus the first's.
+ */
+const u8 bit[8] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+
 i8 *
 free_buf(u8 live)
 {
-    u8 b = 0;
+    u8 first = (u8)((size_t)pool[0] >> 8);
+    u8 used = 0;
     u8 k = 0;
+    u8 b = 0;
 
-    for (b = 0; b != STACK_MAX; b += 1) {
-        for (k = 0; k != live; k += 1)
-            if (stack_arr[k] == pool[b])
-                break;
-        if (k == live)
-            break;
+    for (k = 0; k != live; k += 1) {
+        b = (u8)((size_t)stack_arr[k] >> 8) - first;
+        if (stack_arr[k] && b <= STACK_MAX)
+            used |= bit[b];
     }
-    return pool[b];
+    /* live <= STACK_MAX slots, so one of the STACK_MAX + 1 pages is free */
+    for (k = 0; used & 1; k += 1)
+        used >>= 1;
+    return pool[k];
 }
 
 
@@ -248,12 +553,12 @@ slot_arr(u8 k, u8 j)
 {
     if (stack_arr[k])
         return stack_arr[k];
-    memset(bcast[j], stack_val[k], 256);
+    run_fill(bcast[j], stack_val[k]);
     return bcast[j];
 }
 
 
-/* run a program that passed prog_ok, leaving tile indices in out[256] */
+/* run a program that passed prog_ok, leaving tile indices in out (a page) */
 void
 prog_eval(const prog_t *p, i8 t, u8 *out)
 {
@@ -292,10 +597,10 @@ prog_eval(const prog_t *p, i8 t, u8 *out)
             op -= OP_SIN;
             if (stack_arr[k]) {
                 d = free_buf(sp);
-                lut_loop(d, stack_arr[k], unary_lut[op], unary_off[op]);
+                run_lut(d, stack_arr[k], unary_lut[op]);
                 stack_arr[k] = d;
             } else {
-                stack_val[k] = unary_lut[op][(u8)(stack_val[k] + unary_off[op])];
+                stack_val[k] = unary_lut[op][(u8)stack_val[k]];
             }
             break;
 
@@ -303,7 +608,7 @@ prog_eval(const prog_t *p, i8 t, u8 *out)
             k = sp - 3;
             if (stack_arr[k] || stack_arr[k + 1] || stack_arr[k + 2]) {
                 d = free_buf(sp);
-                sel_loop(d, slot_arr(k, 0), slot_arr(k + 1, 1), slot_arr(k + 2, 2));
+                run_sel(d, slot_arr(k, 0), slot_arr(k + 1, 1), slot_arr(k + 2, 2));
                 stack_arr[k] = d;
             } else {
                 stack_val[k] = stack_val[k] ? stack_val[k + 1] : stack_val[k + 2];
@@ -329,9 +634,16 @@ prog_eval(const prog_t *p, i8 t, u8 *out)
         default: /* binary */
             k = sp - 2;
             op -= OP_ADD;
-            if (stack_arr[k] || stack_arr[k + 1]) {
+            if (op == OP_MUL - OP_ADD && !stack_arr[k] != !stack_arr[k + 1]) {
+                /* array * scalar: build v * k once, then a lookup */
+                a = stack_arr[k] ? stack_arr[k] : stack_arr[k + 1];
+                run_mul_table(bcast[0], stack_arr[k] ? stack_val[k + 1] : stack_val[k]);
                 d = free_buf(sp);
-                binop_v[op](d, slot_arr(k, 0), slot_arr(k + 1, 1));
+                run_lut(d, a, bcast[0]);
+                stack_arr[k] = d;
+            } else if (stack_arr[k] || stack_arr[k + 1]) {
+                d = free_buf(sp);
+                run_bin(op, d, slot_arr(k, 0), slot_arr(k + 1, 1));
                 stack_arr[k] = d;
             } else {
                 stack_val[k] = binop_s[op](stack_val[k], stack_val[k + 1]);
@@ -343,12 +655,8 @@ prog_eval(const prog_t *p, i8 t, u8 *out)
 
     k = sp - 1;
     if (stack_arr[k]) {
-        a = stack_arr[k];
-        k = 0;
-        do {
-            *out++ = value_to_tile[(u8)*a++];
-        } while (++k);
+        run_lut(out, stack_arr[k], value_to_tile);
     } else {
-        memset(out, value_to_tile[(u8)stack_val[k]], 256);
+        run_fill(out, value_to_tile[(u8)stack_val[k]]);
     }
 }

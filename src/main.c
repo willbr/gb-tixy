@@ -51,7 +51,7 @@ const char *const gallery[] = {
 prog_t progs[NUM_FORMULAS];
 
 i8 t = 0;
-u8 screen[256];
+u8 *screen = NULL;   /* a page from the rpn arena */
 u8 formula_idx = 0;
 u8 prog_valid = 0;
 
@@ -166,6 +166,9 @@ init(void)
     u8 y = 0;
 
     DISPLAY_OFF;
+
+    screen = rpn_init();
+    memset(screen, 0, 256);
 
     set_bkg_data(0,   13, (void*)circle_gfx);
     set_bkg_data(32,  96, (void*)font_gfx);
@@ -304,14 +307,44 @@ update(void)
     if (prog_valid)
         prog_eval(&progs[formula_idx], t, screen);
     else
-        memset(screen, 0, sizeof screen);
+        run_fill(screen, 0);
 }
+
+
+#ifdef SDL
+#define copy_grid() set_bkg_tiles(2, 1, 16, 16, screen)
+#else
+/*
+ * screen (a page) -> tilemap rows 1..16 at column 2. VRAM is writable in
+ * modes 0 and 1; after seeing one there are at least ~20 cycles (mode 2)
+ * before mode 3, enough for 2 bytes, so STAT is checked every 2 bytes.
+ * Row starts are 0x9822 + 32 * row, and no row crosses a 256-byte boundary.
+ */
+void
+copy_grid(void) __naked
+{
+    __asm__(
+        "ld a,(_screen + 1)\n ld h,a\n ld l,#0\n"
+        "ld de,#0x9822\n ld c,#16\n"
+        "1$:\n"
+        " ld b,#8\n"
+        "2$:\n"
+        " ldh a,(_STAT_REG + 0)\n and a,#2\n jr nz,2$\n"
+        " ld a,(hl+)\n ld (de),a\n inc e\n"
+        " ld a,(hl+)\n ld (de),a\n inc e\n"
+        " dec b\n jr nz,2$\n"
+        " ld a,e\n add a,#16\n ld e,a\n jr nc,3$\n inc d\n"
+        "3$:\n"
+        " dec c\n jr nz,1$\n"
+        " ret\n");
+}
+#endif
 
 
 void
 draw_screen(void)
 {
-    set_bkg_tiles(2, 1, 16, 16, screen);
+    copy_grid();
     if (text_dirty) {
         draw_text();
         set_bkg_tiles(0, 0, SCREEN_COLS, 1, status_row);
@@ -330,9 +363,12 @@ render(void)
     draw_screen();
 
     now = sys_time;
+    /* only the counter changes here; rebuilding the program line is slow */
     if ((u8)(now - last_time) != loop_frames) {
         loop_frames = now - last_time;
-        text_dirty = 1;
+        put_2digits(status_row + 17, loop_frames);
+        status_row[19] = 'f';
+        set_bkg_tiles(17, 0, 3, 1, status_row + 17);
     }
     last_time = now;
 }

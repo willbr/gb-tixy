@@ -68,7 +68,7 @@ The built-in gallery is the `gallery[]` list of RPN strings in `src/main.c`.
 
 ## How it works
 
-`src/build_tables.c` runs at build time and generates the trig tables, 13
+`src/build_tables.c` runs at build time and generates the lookup tables, 13
 circle tiles plus a value→tile table, and a small font.
 
 The interpreter (`src/rpn.h`) runs a program one token at a time across the
@@ -77,9 +77,13 @@ value (`t`, numbers) or 256 values, so the per-token dispatch happens a few
 times a frame and the work is plain loops. Programs that only depend on `t`
 are computed once per frame.
 
-On the Game Boy that runs at roughly 3–35 fps depending on the program (the
-top-right counter shows frames per update); the inner loops are still plain
-SDCC output.
+On the Game Boy the inner loops are hand-written SM83 assembly. Every
+256-value array (lookup tables in ROM, stack buffers in RAM) starts on a
+256-byte boundary, so element `n` of any array is at `page:n`: register L
+holds `n` and each access just loads that array's page into H. An add is
+about 13 cycles per cell. The gallery runs at 12–60 fps (the top-right
+counter shows frames per update); the SDL build uses the equivalent C
+loops, which double as the reference the assembly is tested against.
 
 The same `main.c` builds for the Game Boy with GBDK or for the desktop with
 `-DSDL`, through a small shim (`src/shim_sdl.h`) that emulates the few GBDK

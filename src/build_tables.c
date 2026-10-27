@@ -4,13 +4,29 @@
 
 /*
  * Angles are in units of pi/128, so 128 == pi and a full turn is 256: angles
- * wrap exactly with i8/u8 arithmetic, and cos(a) == sin(a + 64).
+ * wrap exactly with i8/u8 arithmetic.
  * Outputs are scaled by 127 to fit an i8.
  * Every table has 256 entries in u8 order: index k holds f((signed char)k),
  * i.e. 0..127 first, then -128..-1. Look up with table[(u8)i].
  */
 
 typedef double (*fn_t)(double);
+
+/*
+ * Tables the interpreter indexes as page:n live on 256-byte boundaries in
+ * ROM, so the GB asm loops can address any of them with one index register.
+ */
+#define PAGE_CELL_X   0x7500
+#define PAGE_CELL_Y   0x7600
+#define PAGE_CELL_I   0x7700
+#define PAGE_TO_TILE  0x7800
+#define PAGE_SIN      0x7900
+#define PAGE_COS      0x7a00
+#define PAGE_TAN      0x7b00
+#define PAGE_ATAN     0x7c00
+#define PAGE_SQRT     0x7d00
+#define PAGE_NEG      0x7e00
+#define PAGE_ABS      0x7f00
 
 
 /* print one 8x8 tile of colour indices as GB 2bpp: low bitplane, then high */
@@ -72,7 +88,7 @@ calc_circles(void)
     printf("};\n\n");
 
     /* radius grows linearly with |v|, snapped down to the largest round shape */
-    printf("const unsigned char value_to_tile[] = {\n");
+    printf("const unsigned char TABLE_AT(0x%04x) value_to_tile[256] = {\n", PAGE_TO_TILE);
     for (k = 0; k != 256; k += 1) {
         v = (signed char)k;
         r = (v < 0 ? -v : v) * (3.7 / 128.0);
@@ -191,13 +207,13 @@ calc_cells(void)
 {
     int k = 0;
 
-    printf("const signed char cell_x[] = {");
+    printf("const signed char TABLE_AT(0x%04x) cell_x[256] = {", PAGE_CELL_X);
     for (k = 0; k != 256; k += 1)
         printf("%s%d,", k % 16 ? "" : "\n    ", k % 16);
-    printf("\n};\n\nconst signed char cell_y[] = {");
+    printf("\n};\n\nconst signed char TABLE_AT(0x%04x) cell_y[256] = {", PAGE_CELL_Y);
     for (k = 0; k != 256; k += 1)
         printf("%s%d,", k % 16 ? "" : "\n    ", k / 16);
-    printf("\n};\n\nconst signed char cell_i[] = {");
+    printf("\n};\n\nconst signed char TABLE_AT(0x%04x) cell_i[256] = {", PAGE_CELL_I);
     for (k = 0; k != 256; k += 1)
         printf("%s%d,", k % 16 ? "" : "\n    ", (signed char)k);
     printf("\n};\n\n");
@@ -215,6 +231,7 @@ to_i8(double d)
 
 
 double angle_sin(double i) { return sin(i * (M_PI/128.0)) * 127; }
+double angle_cos(double i) { return cos(i * (M_PI/128.0)) * 127; }
 double angle_tan(double i) { return tan(i * (M_PI/128.0)) * 127; }
 /* input scaled like an angle, output is an angle: range about +-51 */
 double angle_atan(double i) { return atan(i * (M_PI/128.0)) * (128.0/M_PI); }
@@ -225,13 +242,13 @@ double absolute(double i) { return fabs(i); }
 
 
 void
-calc_table(const char *name, fn_t f)
+calc_table(const char *name, int page, fn_t f)
 {
     int k;
     int i;
     double d;
 
-    printf("const signed char %s[] = {\n", name);
+    printf("const signed char TABLE_AT(0x%04x) %s[256] = {\n", page, name);
     for (k = 0; k != 256; k += 1) {
         i = (signed char)k;
         d = f(i);
@@ -245,15 +262,17 @@ calc_table(const char *name, fn_t f)
 int
 main(void)
 {
+    printf("#ifdef SDL\n#define TABLE_AT(addr)\n#else\n#define TABLE_AT(addr) __at(addr)\n#endif\n\n");
     calc_circles();
     calc_font("font_gfx", 1);
     calc_font("font_hi_gfx", 2);
     calc_cells();
-    calc_table("sin_table",  angle_sin);
-    calc_table("tan_table",  angle_tan);
-    calc_table("atan_table", angle_atan);
-    calc_table("sqrt_table", int_sqrt);
-    calc_table("neg_table",  neg);
-    calc_table("abs_table",  absolute);
+    calc_table("sin_table",  PAGE_SIN,  angle_sin);
+    calc_table("cos_table",  PAGE_COS,  angle_cos);
+    calc_table("tan_table",  PAGE_TAN,  angle_tan);
+    calc_table("atan_table", PAGE_ATAN, angle_atan);
+    calc_table("sqrt_table", PAGE_SQRT, int_sqrt);
+    calc_table("neg_table",  PAGE_NEG,  neg);
+    calc_table("abs_table",  PAGE_ABS,  absolute);
     return 0;
 }

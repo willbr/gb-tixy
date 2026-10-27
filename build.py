@@ -48,9 +48,29 @@ def lcc():
     return path
 
 
+# first page-aligned ROM table (PAGE_CELL_X in src/build_tables.c);
+# code must end below it
+TABLES_START = 0x7500
+
+
+def check_rom_layout():
+    syms = {}
+    for line in open(ROM[:-3] + ".noi"):
+        p = line.split()
+        if len(p) == 3 and p[0] == "DEF":
+            syms[p[1]] = int(p[2], 16)
+    end = max(start + syms.get("l__" + name[3:], 0)
+              for name, start in syms.items()
+              if name.startswith("s__") and start < 0x8000
+              and not name[3:].startswith(("CABS", "HEADER")))
+    if end > TABLES_START:
+        sys.exit(f"ROM code ends at {end:#06x}, past the tables at {TABLES_START:#06x}")
+
+
 def gb():
     tables()
-    run([lcc(), "-Wm-yc", "-o", ROM, os.path.join(SRC, "main.c")])
+    run([lcc(), "-Wm-yc", "-Wl-j", "-o", ROM, os.path.join(SRC, "main.c")])
+    check_rom_layout()
 
 
 def sdl_build():
