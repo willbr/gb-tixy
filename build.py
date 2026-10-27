@@ -49,7 +49,7 @@ def lcc():
 
 def gb():
     tables()
-    run([lcc(), "-o", ROM, os.path.join(SRC, "main.c")])
+    run([lcc(), "-Wm-yc", "-o", ROM, os.path.join(SRC, "main.c")])
 
 
 def sdl_build():

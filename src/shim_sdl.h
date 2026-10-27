@@ -32,12 +32,23 @@
 
 
 typedef unsigned char UINT8;
+typedef unsigned short UINT16;
 typedef unsigned int UINT32;
+typedef UINT16 palette_color_t;
+
+/* the shim always behaves as a CGB */
+#define CGB_TYPE 0x11
+#define VBK_TILES      0
+#define VBK_ATTRIBUTES 1
+#define RGB8(r, g, b) ((UINT16)((((b) >> 3) & 0x1f) << 10) | (UINT16)((((g) >> 3) & 0x1f) << 5) | (((r) >> 3) & 0x1f))
+
+UINT8 _cpu = CGB_TYPE;
+UINT8 VBK_REG = VBK_TILES;
 
 UINT8 shim_memory[0x10000];
 UINT8 shim_pad = 0;
 
-/* GB colour index -> RGB, 0 = lightest like the DMG default palette */
+/* GB colour index -> RGB, set by set_bkg_palette */
 UINT32 shim_palette[4];
 
 UINT32 shim_prev_time = 0;
@@ -61,9 +72,32 @@ set_bkg_tiles(UINT8 x, UINT8 y, UINT8 w, UINT8 h, unsigned char *tiles)
 {
     UINT8 i = 0;
 
+    /* attributes aren't emulated: everything uses palette 0 */
+    if (VBK_REG == VBK_ATTRIBUTES)
+        return;
+
     for (i = 0; i < h; i += 1) {
         memcpy(&shim_memory[0x9800 + (y + i) * 32 + x], tiles, w);
         tiles += w;
+    }
+}
+
+
+/* only palette 0 is used; expand CGB 15-bit colour to 8-bit */
+void
+set_bkg_palette(UINT8 first_palette, UINT8 nb_palettes, const palette_color_t *rgb_data)
+{
+    UINT8 i = 0;
+    UINT8 r, g, b;
+
+    if (first_palette != 0 || nb_palettes == 0)
+        return;
+
+    for (i = 0; i != 4; i += 1) {
+        r = (rgb_data[i]       & 0x1f) << 3;
+        g = (rgb_data[i] >> 5  & 0x1f) << 3;
+        b = (rgb_data[i] >> 10 & 0x1f) << 3;
+        shim_palette[i] = SDL_MapRGB(shim_lcd->format, r | r >> 5, g | g >> 5, b | b >> 5);
     }
 }
 
@@ -125,11 +159,6 @@ shim_init(void)
         printf("failed to create lcd surface: %s\n", SDL_GetError());
         exit(1);
     }
-
-    shim_palette[0] = SDL_MapRGB(shim_lcd->format, 10, 255, 10);
-    shim_palette[1] = SDL_MapRGB(shim_lcd->format, 10, 170, 10);
-    shim_palette[2] = SDL_MapRGB(shim_lcd->format, 10,  85, 10);
-    shim_palette[3] = SDL_MapRGB(shim_lcd->format, 10,  10, 10);
 }
 
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A clone of [tixy.land](https://tixy.land) for the Game Boy (currently a DMG ROM, no CGB flag/palettes), with an SDL preview build for desktop iteration.
+A clone of [tixy.land](https://tixy.land) for the Game Boy. The ROM is CGB-compatible (`-Wm-yc`): on a CGB it loads `tixy_palette` from `main.c` into background palette 0, on a DMG it uses the default greys, with an SDL preview build for desktop iteration.
 
 ## Build & run
 
@@ -23,7 +23,7 @@ A clone of [tixy.land](https://tixy.land) for the Game Boy (currently a DMG ROM,
 The same `src/main.c` compiles for two targets, switched by `-DSDL`:
 
 - **Game Boy** (default): includes `<gb/gb.h>`.
-- **SDL** (`-DSDL`): includes `src/shim_sdl.h`, which reimplements the GBDK calls used (`set_bkg_data`, `set_bkg_tiles`, `joypad`, `wait_vbl_done`, …) against `shim_memory[0x10000]` (tile data at `0x8800`, tilemap at `0x9800`) and draws the visible 160×144 at scroll (0,0). Keyboard maps to GBDK `J_*` bits: arrows, Space/Z = A, X = B.
+- **SDL** (`-DSDL`): includes `src/shim_sdl.h`, which reimplements the GBDK calls used (`set_bkg_data`, `set_bkg_tiles`, `joypad`, `wait_vbl_done`, `set_bkg_palette`, …) against `shim_memory[0x10000]` (tile data at `0x8800`, tilemap at `0x9800`), always acts as a CGB (palette 0 only, attribute writes ignored) and draws the visible 160×144 at scroll (0,0). Keyboard maps to GBDK `J_*` bits: arrows, Space/Z = A, X = B.
 
 ### Formulas
 

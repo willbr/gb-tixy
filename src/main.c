@@ -7,6 +7,7 @@
 #include "shim_sdl.h"
 #else
 #include <gb/gb.h>
+#include <gb/cgb.h>
 #endif
 
 
@@ -14,6 +15,14 @@ i8 t = 0;
 u8 screen[256];
 u8 formula_idx = 0;
 u8 prev_pad = 0;
+
+/* CGB background palette 0, colour 0 = lightest like the DMG */
+const palette_color_t tixy_palette[4] = {
+    RGB8(255, 255, 255),
+    RGB8(255, 120, 130),
+    RGB8(200,  20,  40),
+    RGB8( 10,  10,  10),
+};
 
 
 /*
@@ -95,6 +104,17 @@ init(void)
     memset(row, 0x7f, sizeof row);
     for (y = 0; y != 32; y += 1)
         set_bkg_tiles(0, y, 32, 1, row);
+
+    if (_cpu == CGB_TYPE) {
+        set_bkg_palette(0, 1, tixy_palette);
+
+        /* every tile uses palette 0 */
+        memset(row, 0, sizeof row);
+        VBK_REG = VBK_ATTRIBUTES;
+        for (y = 0; y != 32; y += 1)
+            set_bkg_tiles(0, y, 32, 1, row);
+        VBK_REG = VBK_TILES;
+    }
 
     SHOW_BKG;
     enable_interrupts();
