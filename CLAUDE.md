@@ -15,6 +15,7 @@ A clone of [tixy.land](https://tixy.land) for the Game Boy. The ROM is CGB-compa
 - `./build.py tables` — compile and run `src/build_tables.c` > `src/tables.h` (every build does this; it's instant).
 - `./build.py run` — build the ROM and open it in SameBoy.
 - `./build.py watch [gb|sdl]` — poll `src/` and rebuild on change; `sdl` restarts the preview.
+- `./build.py gif` — record `docs/tixy.gif` via `src/record.c` (headless SDL shim) piped to ffmpeg; formulas chosen by `GIF_FORMULAS` indices in `build.py`.
 
 `build/` and `tables.h` are gitignored.
 

@@ -7,6 +7,7 @@ usage: ./build.py [gb|sdl|tables|run|watch [gb|sdl]]
   tables  regenerate src/tables.h
   run     build the ROM and open it in SameBoy
   watch   rebuild on src/ changes; 'watch sdl' restarts the preview
+  gif     record docs/tixy.gif for the README (needs ffmpeg)
 
 lcc is found via $GBDK_HOME/bin/lcc, else PATH, else ~/opt/gbdk/bin/lcc.
 """
@@ -65,6 +66,31 @@ def sdl():
     run([SDL_BIN])
 
 
+# formula indices shown in the README gif, 256 frames (one t cycle) each
+GIF_FORMULAS = ["0", "10", "14", "16"]
+
+
+def gif():
+    tables()
+    exe = os.path.join(BUILD, "record")
+    out = os.path.join(ROOT, "docs", "tixy.gif")
+    cflags = subprocess.check_output(["sdl2-config", "--cflags"], text=True).split()
+    libs = subprocess.check_output(["sdl2-config", "--libs"], text=True).split()
+    run(["cc", "-std=c99", "-O1", "-DSDL", *cflags,
+         "-o", exe, os.path.join(SRC, "record.c"), *libs])
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    env = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    rec = subprocess.Popen([exe, "256", *GIF_FORMULAS], stdout=subprocess.PIPE, env=env)
+    # crop to the 16x16 grid plus an 8px border, 2x nearest, every 2nd frame
+    vf = ("fps=30,crop=144:144:8:0,scale=288:288:flags=neighbor,"
+          "split[a][b];[a]palettegen=max_colors=4:reserve_transparent=0[p];"
+          "[b][p]paletteuse=dither=none")
+    run(["ffmpeg", "-loglevel", "error", "-y",
+         "-f", "rawvideo", "-pix_fmt", "bgra", "-s", "160x144", "-framerate", "60",
+         "-i", "-", "-vf", vf, "-loop", "0", out], stdin=rec.stdout)
+    rec.wait()
+
+
 def open_rom():
     gb()
     run(["open", "-a", "SameBoy", ROM])
@@ -108,6 +134,8 @@ def main():
             sdl()
         elif cmd == "tables":
             tables()
+        elif cmd == "gif":
+            gif()
         elif cmd == "run":
             open_rom()
         elif cmd == "watch":
