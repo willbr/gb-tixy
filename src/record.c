@@ -2,11 +2,14 @@
  * Headless recorder for the README gif: runs main.c through the SDL shim and
  * writes raw ARGB 160x144 frames to stdout.
  *
- * usage: record FRAMES IDX [IDX...]   (formula indices, FRAMES frames each)
+ * usage: record FRAMES IDX [IDX...]   (gallery indices, FRAMES frames each)
  */
 #define main tixy_main
 #include "main.c"
 #undef main
+
+#include <stdio.h>
+#include <stdlib.h>
 
 int
 main(int argc, char **argv)
@@ -26,12 +29,11 @@ main(int argc, char **argv)
     init();
 
     for (a = 2; a < argc; a += 1) {
-        formula_idx = atoi(argv[a]) % NUM_FORMULAS;
-        t = 0;
+        select_formula(atoi(argv[a]) % NUM_FORMULAS);
         for (f = 0; f != frames; f += 1) {
-            formulas[formula_idx]();
-            t++;
-            set_bkg_tiles(2, 1, 16, 16, screen);
+            if (prog_valid)
+                prog_eval(&progs[formula_idx], (i8)f, screen);
+            draw_screen();
             shim_render();
             for (y = 0; y != SCREEN_HEIGHT; y += 1)
                 fwrite((UINT8 *)shim_lcd->pixels + y * shim_lcd->pitch, 4, SCREEN_WIDTH, stdout);

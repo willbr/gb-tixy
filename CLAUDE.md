@@ -24,23 +24,32 @@ A clone of [tixy.land](https://tixy.land) for the Game Boy. The ROM is CGB-compa
 The same `src/main.c` compiles for two targets, switched by `-DSDL`:
 
 - **Game Boy** (default): includes `<gb/gb.h>`.
-- **SDL** (`-DSDL`): includes `src/shim_sdl.h`, which reimplements the GBDK calls used (`set_bkg_data`, `set_bkg_tiles`, `joypad`, `wait_vbl_done`, `set_bkg_palette`, …) against `shim_memory[0x10000]` (tile data at `0x8800`, tilemap at `0x9800`), always acts as a CGB (palette 0 only, attribute writes ignored) and draws the visible 160×144 at scroll (0,0). Keyboard maps to GBDK `J_*` bits: arrows, Space/Z = A, X = B.
+- **SDL** (`-DSDL`): includes `src/shim_sdl.h`, which reimplements the GBDK calls used (`set_bkg_data`, `set_bkg_tiles`, `joypad`, `wait_vbl_done`, `set_bkg_palette`, …) against `shim_memory[0x10000]` (tile data at `0x8800`, tilemap at `0x9800`), always acts as a CGB (palette 0 only, attribute writes ignored) counts `sys_time` per `wait_vbl_done`, and draws the visible 160×144 at scroll (0,0). Keyboard maps to GBDK `J_*` bits: arrows, Space/Z = A, X = B, Enter = Start, Backspace = Select.
 
-### Formulas
+### Formulas (RPN)
 
-Each visualisation is `FORMULA(name, expr)` in `main.c`, which expands to a function containing the whole 16×16 loop with `x`, `y`, `i` as locals and `t` global. Add new ones there and to `formulas[]`. A/Right = next, B/Left = previous (both targets). `t` increments once per frame.
+Formulas are RPN token programs, editable on the device. `gallery[]` in `main.c` holds them as strings (`"y 5 * t + sin"`), parsed into `progs[]` (RAM) at boot; the editor changes those copies. `src/rpn.h` has the token set (`op_names`, `op_in`/`op_out` stack effects), `prog_parse`, `prog_ok` (static stack check; invalid programs show `err` and a blank grid), and `prog_eval`.
+
+`prog_eval` runs each token once over all 256 cells. A stack slot is a scalar (`t`, literals, and anything computed only from them — evaluated once) or a pointer to 256 `i8`s; `x`/`y`/`i` point at ROM tables `cell_x`/`cell_y`/`cell_i`. Results go to a `pool` buffer that no live slot references (`free_buf`), so `dup`/`swap` can share buffers; scalars are broadcast into `bcast` only when mixed with arrays. Binary ops come from one `BINOP(name, expr)` macro (scalar + 256-wide loop). Unary ops are all LUTs via `lut_loop`. The final pass maps values through `value_to_tile`.
+
+`t` is `(i8)sys_time`, so animation speed doesn't depend on how long evaluation takes. Screen: row 0 status (`draw_text`: formula, run/edit, `err`, frames per update), rows 1–16 the grid at column 2, row 17 the program scrolled to the cursor.
+
+Performance (PyBoy, CGB): ~3–35 fps; each 256-wide array op costs ~0.7 frame because SDCC keeps the loop pointers on the stack. Programs depending only on `t` are nearly free. Comparison operators return 127/0.
+
+`src/record.c` includes `main.c` and renders headless for `./build.py gif`.
 
 ### Tables
 
 `src/build_tables.c` runs at build time and emits `src/tables.h`:
 
-1. `circle_gfx[]` — 256 8×8 tiles, tile n = the circle for value `(i8)n`, so a formula's result is written straight into the tilemap. Circle radius grows with |v| (snapped to round shapes, max 7px, 1px gap); colour 1 for positive, 2 for negative, 0 background. Both 128-tile halves are uploaded in `init()`.
-2. `sin_table`, `tan_table`, `atan_table`, `sqrt_table` — 256 `i8` entries, **stored in u8 order** (index k holds f((i8)k)). `gb_sin` etc. in `shared.h` are macros (`table[(u8)(i)]`) because SDCC won't inline functions. Angles are in units of π/128 (128 = π, full turn = 256, so they wrap exactly); `gb_cos(i)` is `sin_table[(u8)(i + 64)]`. Outputs are ×127; `atan` returns an angle (±51). Values are rounded and clamped to i8.
-
-Inside formulas use `gb_sin(t)` etc., not `<math.h>` — the GB has no FPU.
+1. `circle_gfx[]` — 13 tiles: 0 empty, 1–6 positive sizes (colour 1), 7–12 negative (colour 2). `value_to_tile[256]` maps an `i8` value to its tile (radius ∝ |v|, snapped to round shapes, max 7px, 1px gap).
+2. `font_gfx` / `font_hi_gfx` — 5×8 font for ASCII 32–127 in colour 1 / colour 2, uploaded to tiles 32–127 and 160–255, so text is ASCII and `| 0x80` highlights. Glyphs are ASCII-art strings in `glyphs[]`.
+3. `cell_x`, `cell_y`, `cell_i` — per-cell coordinates for the interpreter.
+4. `sin_table`, `tan_table`, `atan_table`, `sqrt_table`, `neg_table`, `abs_table` — 256 `i8` entries **in u8 order** (index k holds f((i8)k)), looked up as `table[(u8)v]`. Angles are π/128 units (128 = π, full turn = 256); cos is `sin_table[(u8)(v + 64)]`. Outputs ×127, rounded and clamped (neg/abs of −128 give 127).
 
 ### Game Boy constraints
 
 - Grid values are `i8`; assume 8-bit wraparound.
-- A formula's value sets circle size: ±127 is full size, so small-range expressions (e.g. `y - x`) draw small dots — scale them up (`<< 3`) to taste.
-- Avoid `%`, `/` and `*` on signed values in formulas where `&`/shifts work — SDCC calls software routines for them on the SM83.
+- A formula's value sets circle size: ±127 is full size, so small-range expressions (e.g. `y x -`) draw small dots — scale them up (`3 <<`) to taste.
+- `* / %` call SDCC software routines per element; prefer `&`/shifts.
+- To measure on real (emulated) hardware, PyBoy can run the ROM headless; `lcc -Wl-j` writes a `.noi` symbol file with RAM addresses (e.g. `_loop_frames`).

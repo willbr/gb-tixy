@@ -10,11 +10,64 @@
 #include <gb/cgb.h>
 #endif
 
+#include "rpn.h"
+
+
+/*
+ * Tile map: circles 0..12, font tiles are ASCII (32..127), and the
+ * highlighted (red) font is ASCII + 0x80. Tile 0 is blank.
+ */
+#define TILE_HI 0x80
+
+#define SCREEN_COLS 20
+
+/* the gallery, in RPN; edits on the GB change the RAM copy in progs[] */
+const char *const gallery[] = {
+    "y 5 * t + sin",                                     /* Math.sin(y/8+t) */
+    "x t 2 << +",
+    "y t -",
+    "y x -",
+    "i 3 & y 3 & - 4 <<",
+    "x 3 & 0 > y 3 & 0 > &",
+    "t sin",
+    "t y + sin x sqrt <<",
+    "y sin t +",
+    "x sin t +",
+    "x sin 2 << y cos 2 << + t 1 << +",
+    "i sin 1 >> t +",
+    "t sin x >>",
+    "x 3 > y 3 > & x 12 < & y 12 < & t 3 << i t + ?",
+    "t i + x y * + cos",
+    "x 3 >> cos x 1 << t 2 << - cos - y - 14 + 127 i ?",
+    "y t 3 * - 9 + x 3 * t - cos 3 * + x 7 * sin 5 * -",
+    "x y - t 1 << sin 3 >> 3 * -",
+    "i 2 >> atan x sin + y cos + t 2 << +",
+    "t sin t tan *",
+    "y x - t 2 >> 7 & <<",
+};
+
+#define NUM_FORMULAS (sizeof(gallery) / sizeof(gallery[0]))
+
+prog_t progs[NUM_FORMULAS];
 
 i8 t = 0;
 u8 screen[256];
 u8 formula_idx = 0;
+u8 prog_valid = 0;
+
+u8 editing = 0;
+u8 cursor = 0;
+u8 last_op = OP_ADD;
+u8 last_num = NUM_BASE + 1;
+
 u8 prev_pad = 0;
+u8 hold = 0;
+
+u8 status_row[SCREEN_COLS];
+u8 prog_row[SCREEN_COLS];
+u8 text_dirty = 1;
+u8 loop_frames = 0;
+u16 last_time = 0;
 
 /* CGB background palette 0: background, positive, negative, unused */
 const palette_color_t tixy_palette[4] = {
@@ -28,73 +81,82 @@ const palette_color_t tixy_palette[4] = {
 #define TIXY_BGP 0x93
 
 
+void
+select_formula(u8 idx)
+{
+    formula_idx = idx;
+    cursor = progs[idx].len ? progs[idx].len - 1 : 0;
+    prog_valid = prog_ok(&progs[idx]);
+    text_dirty = 1;
+}
+
+
+void
+put_str(u8 *dst, const char *s)
+{
+    while (*s)
+        *dst++ = *s++;
+}
+
+
+void
+put_2digits(u8 *dst, u8 v)
+{
+    dst[0] = '0' + v / 10 % 10;
+    dst[1] = '0' + v % 10;
+}
+
+
 /*
- * Each formula gets its own 16x16 loop so the expression is inlined:
- * no call per cell, and x, y, i are locals.
+ * Row 0: "03/21 edit err   2f" (formula, mode, invalid program, frames per update)
+ * Row 17: the program, scrolled so the cursor token is visible.
  */
-#define FORMULA(name, expr)                       \
-    void name(void)                               \
-    {                                             \
-        u8 *p = screen;                           \
-        i8 i = 0;                                 \
-        i8 x;                                     \
-        i8 y;                                     \
-        for (y = 0; y != 16; y += 1) {            \
-            for (x = 0; x != 16; x += 1) {        \
-                *p++ = (expr);                    \
-                i++;                              \
-            }                                     \
-        }                                         \
+void
+draw_text(void)
+{
+    u8 full[PROG_MAX * 5];
+    prog_t *p = &progs[formula_idx];
+    u8 len = 0;
+    u8 cur_end = 0;
+    u8 scroll = 0;
+    u8 n = 0;
+    u8 w = 0;
+
+    memset(status_row, ' ', SCREEN_COLS);
+    put_2digits(status_row, formula_idx + 1);
+    status_row[2] = '/';
+    put_2digits(status_row + 3, NUM_FORMULAS);
+    put_str(status_row + 6, editing ? "edit" : "run");
+    if (!prog_valid)
+        put_str(status_row + 11, "err");
+    if (loop_frames) {
+        put_2digits(status_row + 17, loop_frames);
+        status_row[19] = 'f';
     }
 
-/* tixy: Math.sin(y/8+t)  (y/8 rad ~= y*5 units) */
-FORMULA(f_sin_y8,   gb_sin((y << 2) + y + t))
-FORMULA(f_scroll,   x + (t << 2))
-FORMULA(f_wipe,     y - t)
-FORMULA(f_diagonal, y - x)
-FORMULA(f_stripes,  ((i&3) - (y&3)) << 4)
-FORMULA(f_grid,     ((x&3) && (y&3)) ? 0x7f : 0)
-FORMULA(f_pulse,    gb_sin(t))
-FORMULA(f_sin_t_y,  gb_sin(t + y) << gb_sqrt(x))
-FORMULA(f_sin_y,    gb_sin(y) + t)
-FORMULA(f_sin_x,    gb_sin(x) + t)
-FORMULA(f_wave,     (gb_sin(x) << 2) + (gb_cos(y) << 2) + (t << 1))
-FORMULA(f_sin_i,    (gb_sin(i) >> 1) + t)
-FORMULA(f_sin_t_x,  gb_sin(t) >> x)
-FORMULA(f_square,   x>3 && y>3 && x<12 && y<12 ? (t << 3) : (i + t))
-FORMULA(f_noise,    gb_cos(t + i + x * y))
-FORMULA(f_checker,  (gb_cos(x >> 3) - gb_cos((x << 1) - (t << 2)) - y + 14) != 0 ? 0x7f : i)
-FORMULA(f_blood,    y - t*3 + 9 + 3*gb_cos(x*3-t) - 5*gb_sin(x*7))
-FORMULA(f_softwipe, (x-y) - (gb_sin(t << 1) >> 3) * 3)
-FORMULA(f_atan,     gb_atan(i>>2) + gb_sin(x) + gb_cos(y) + (t << 2))
-FORMULA(f_tangle,   gb_sin(t) * gb_tan(t))
-FORMULA(f_shift,    (y-x) << ((t >> 2) & 7))
+    for (n = 0; n != p->len; n += 1) {
+        if (n)
+            full[len++] = ' ';
+        w = tok_text(p->tok[n], full + len);
+        if (editing && n == cursor) {
+            cur_end = len + w;
+            while (w--)
+                full[len++] |= TILE_HI;
+        } else {
+            len += w;
+        }
+    }
+    if (editing && p->len == 0) {
+        full[0] = '_' | TILE_HI;
+        len = 1;
+        cur_end = 1;
+    }
 
-void (*formulas[])(void) = {
-    f_sin_y8,
-    f_scroll,
-    f_wipe,
-    f_diagonal,
-    f_stripes,
-    f_grid,
-    f_pulse,
-    f_sin_t_y,
-    f_sin_y,
-    f_sin_x,
-    f_wave,
-    f_sin_i,
-    f_sin_t_x,
-    f_square,
-    f_noise,
-    f_checker,
-    f_blood,
-    f_softwipe,
-    f_atan,
-    f_tangle,
-    f_shift,
-};
-
-#define NUM_FORMULAS (sizeof(formulas) / sizeof(formulas[0]))
+    if (cur_end > SCREEN_COLS)
+        scroll = cur_end - SCREEN_COLS;
+    for (n = 0; n != SCREEN_COLS; n += 1)
+        prog_row[n] = scroll + n < len ? full[scroll + n] : ' ';
+}
 
 
 void
@@ -105,9 +167,9 @@ init(void)
 
     DISPLAY_OFF;
 
-    /* tile n is the circle for value (i8)n, so a cell's value is its tile */
-    set_bkg_data(0,   128, (void*)&circle_gfx[0]);
-    set_bkg_data(128, 128, (void*)&circle_gfx[128 * 16]);
+    set_bkg_data(0,   13, (void*)circle_gfx);
+    set_bkg_data(32,  96, (void*)font_gfx);
+    set_bkg_data(160, 96, (void*)font_hi_gfx);
 
     memset(row, 0, sizeof row);
     for (y = 0; y != 32; y += 1)
@@ -117,7 +179,6 @@ init(void)
         set_bkg_palette(0, 1, tixy_palette);
 
         /* every tile uses palette 0 */
-        memset(row, 0, sizeof row);
         VBK_REG = VBK_ATTRIBUTES;
         for (y = 0; y != 32; y += 1)
             set_bkg_tiles(0, y, 32, 1, row);
@@ -126,34 +187,154 @@ init(void)
         BGP_REG = TIXY_BGP;
     }
 
+    for (y = 0; y != NUM_FORMULAS; y += 1)
+        prog_parse(&progs[y], gallery[y]);
+    select_formula(0);
+
     SHOW_BKG;
     enable_interrupts();
     DISPLAY_ON;
 }
 
 
+/*
+ * Run:  Left/Right (or B/A) change formula, Start edits it.
+ * Edit: Left/Right move, Up/Down change the token, Select swaps between
+ *       number and operator, A inserts a copy after the cursor, B deletes,
+ *       Start runs. Directions repeat while held.
+ */
 void
-update(void)
+input(void)
 {
     u8 pad = joypad();
     u8 pressed = pad & ~prev_pad;
+    u8 dirs = pad & (J_UP | J_DOWN | J_LEFT | J_RIGHT);
+    prog_t *p = &progs[formula_idx];
+    u8 *tok = &p->tok[cursor];
+    u8 n = 0;
+
     prev_pad = pad;
 
-    if (pressed & (J_A | J_RIGHT))
-        formula_idx = formula_idx == NUM_FORMULAS - 1 ? 0 : formula_idx + 1;
-    if (pressed & (J_B | J_LEFT))
-        formula_idx = formula_idx == 0 ? NUM_FORMULAS - 1 : formula_idx - 1;
+    if (dirs) {
+        if (hold != 255)
+            hold++;
+        if (hold > 12 && (hold & 1))
+            pressed |= dirs;
+    } else {
+        hold = 0;
+    }
 
-    formulas[formula_idx]();
-    t++;
+    if (!pressed)
+        return;
+
+    if (!editing) {
+        if (pressed & (J_A | J_RIGHT))
+            select_formula(formula_idx == NUM_FORMULAS - 1 ? 0 : formula_idx + 1);
+        if (pressed & (J_B | J_LEFT))
+            select_formula(formula_idx == 0 ? NUM_FORMULAS - 1 : formula_idx - 1);
+        if (pressed & J_START) {
+            editing = 1;
+            text_dirty = 1;
+        }
+        return;
+    }
+
+    if (pressed & J_START)
+        editing = 0;
+
+    if ((pressed & J_LEFT) && cursor > 0)
+        cursor--;
+    if ((pressed & J_RIGHT) && cursor + 1 < p->len)
+        cursor++;
+
+    if (p->len && (pressed & (J_UP | J_DOWN))) {
+        if (IS_NUM(*tok)) {
+            if (pressed & J_UP)
+                *tok = *tok == NUM_BASE + NUM_MAX ? NUM_BASE : *tok + 1;
+            else
+                *tok = *tok == NUM_BASE ? NUM_BASE + NUM_MAX : *tok - 1;
+        } else {
+            if (pressed & J_UP)
+                *tok = *tok == OP_COUNT - 1 ? 0 : *tok + 1;
+            else
+                *tok = *tok == 0 ? OP_COUNT - 1 : *tok - 1;
+        }
+    }
+
+    if (p->len && (pressed & J_SELECT)) {
+        if (IS_NUM(*tok)) {
+            last_num = *tok;
+            *tok = last_op;
+        } else {
+            last_op = *tok;
+            *tok = last_num;
+        }
+    }
+
+    if ((pressed & J_A) && p->len < PROG_MAX) {
+        if (p->len == 0) {
+            p->tok[0] = OP_T;
+            p->len = 1;
+        } else {
+            for (n = p->len; n != cursor; n -= 1)
+                p->tok[n] = p->tok[n - 1];
+            p->len++;
+            cursor++;
+        }
+    }
+
+    if ((pressed & J_B) && p->len) {
+        for (n = cursor; n + 1 < p->len; n += 1)
+            p->tok[n] = p->tok[n + 1];
+        p->len--;
+        if (cursor && cursor >= p->len)
+            cursor--;
+    }
+
+    prog_valid = prog_ok(p);
+    text_dirty = 1;
+}
+
+
+void
+update(void)
+{
+    input();
+    t = (i8)sys_time;
+    if (prog_valid)
+        prog_eval(&progs[formula_idx], t, screen);
+    else
+        memset(screen, 0, sizeof screen);
+}
+
+
+void
+draw_screen(void)
+{
+    set_bkg_tiles(2, 1, 16, 16, screen);
+    if (text_dirty) {
+        draw_text();
+        set_bkg_tiles(0, 0, SCREEN_COLS, 1, status_row);
+        set_bkg_tiles(0, 17, SCREEN_COLS, 1, prog_row);
+        text_dirty = 0;
+    }
 }
 
 
 void
 render(void)
 {
+    u16 now = 0;
+
     wait_vbl_done();
-    set_bkg_tiles(2,1, 16, 16, screen);
+    draw_screen();
+
+    now = sys_time;
+    if ((u8)(now - last_time) != loop_frames) {
+        loop_frames = now - last_time;
+        text_dirty = 1;
+    }
+    last_time = now;
 }
 
 

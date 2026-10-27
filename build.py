@@ -81,8 +81,8 @@ def gif():
     os.makedirs(os.path.dirname(out), exist_ok=True)
     env = dict(os.environ, SDL_VIDEODRIVER="dummy")
     rec = subprocess.Popen([exe, "256", *GIF_FORMULAS], stdout=subprocess.PIPE, env=env)
-    # crop to the 16x16 grid plus an 8px border, 2x nearest, every 2nd frame
-    vf = ("fps=30,crop=144:144:8:0,scale=288:288:flags=neighbor,"
+    # whole screen (status, grid, program), 2x nearest, every 2nd frame
+    vf = ("fps=30,scale=320:288:flags=neighbor,"
           "split[a][b];[a]palettegen=max_colors=4:reserve_transparent=0[p];"
           "[b][p]paletteuse=dither=none")
     run(["ffmpeg", "-loglevel", "error", "-y",

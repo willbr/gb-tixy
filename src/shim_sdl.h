@@ -54,6 +54,9 @@ UINT32 shim_palette[4];
 
 UINT32 shim_prev_time = 0;
 
+/* counts vblanks like GBDK's sys_time */
+UINT16 sys_time = 0;
+
 SDL_Window  *shim_window = NULL;
 SDL_Surface *shim_screen_surface = NULL;
 SDL_Surface *shim_lcd = NULL;
@@ -127,6 +130,7 @@ wait_vbl_done(void)
     }
 
     shim_prev_time = SDL_GetTicks();
+    sys_time++;
 }
 
 

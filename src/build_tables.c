@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
 /*
  * Angles are in units of pi/128, so 128 == pi and a full turn is 256: angles
@@ -11,54 +12,195 @@
 
 typedef double (*fn_t)(double);
 
+
+/* print one 8x8 tile of colour indices as GB 2bpp: low bitplane, then high */
+void
+emit_tile(int px[8][8], const char *comment)
+{
+    int x = 0;
+    int y = 0;
+    unsigned char low = 0;
+    unsigned char high = 0;
+
+    printf("    ");
+    for (y = 0; y != 8; y += 1) {
+        low = 0;
+        high = 0;
+        for (x = 0; x != 8; x += 1) {
+            low  |= (px[y][x] & 1)        << (7 - x);
+            high |= ((px[y][x] >> 1) & 1) << (7 - x);
+        }
+        if (y == 4)
+            printf("\n    ");
+        printf("0x%02x,0x%02x,", low, high);
+    }
+    printf(" /* %s */\n", comment);
+}
+
+
 /*
- * Tile k draws the value (signed char)k as a tixy.land circle around pixel
- * (3,3), leaving a 1px gap between cells. Radius grows linearly with |v|,
- * snapped down to a squared radius that gives a round pixel shape
- * (dot, plus, 3x3, 5, 7, 7+). Colour 0 = background, 1 = positive, 2 = negative.
+ * tixy.land circles around pixel (3,3), leaving a 1px gap between cells.
+ * Squared radii that give round pixel shapes: dot, plus, 3x3, 5, 7, 7+.
+ * Tile 0 is empty, 1..6 are positive sizes (colour 1), 7..12 negative (colour 2).
  */
-int round_r2[] = {0, 1, 2, 5, 10, 13};
+#define NUM_SIZES 6
+int round_r2[NUM_SIZES] = {0, 1, 2, 5, 10, 13};
 
 void
 calc_circles(void)
 {
+    int px[8][8];
     int k = 0;
     int v = 0;
+    int s = 0;
     int x = 0;
     int y = 0;
     int c = 0;
-    int n = 0;
-    int r2 = 0;
     double r = 0;
-    unsigned char low = 0;
-    unsigned char high = 0;
+    char comment[32];
 
     printf("const unsigned char circle_gfx[] = {\n");
+    for (k = 0; k != 1 + 2 * NUM_SIZES; k += 1) {
+        s = k == 0 ? -1 : (k - 1) % NUM_SIZES;
+        c = k <= NUM_SIZES ? 1 : 2;
+        for (y = 0; y != 8; y += 1)
+            for (x = 0; x != 8; x += 1)
+                px[y][x] = s >= 0 && (x-3)*(x-3) + (y-3)*(y-3) <= round_r2[s] ? c : 0;
+        snprintf(comment, sizeof comment, "%d", k);
+        emit_tile(px, comment);
+    }
+    printf("};\n\n");
+
+    /* radius grows linearly with |v|, snapped down to the largest round shape */
+    printf("const unsigned char value_to_tile[] = {\n");
     for (k = 0; k != 256; k += 1) {
         v = (signed char)k;
         r = (v < 0 ? -v : v) * (3.7 / 128.0);
-        r2 = -1;
-        for (n = 0; n != 6 && v != 0 && round_r2[n] <= r*r; n += 1)
-            r2 = round_r2[n];
-        printf("    ");
-        for (y = 0; y != 8; y += 1) {
-            low = 0;
-            high = 0;
-            for (x = 0; x != 8; x += 1) {
-                c = (x-3)*(x-3) + (y-3)*(y-3) <= r2 ? (v > 0 ? 1 : 2) : 0;
-                low  |= (c & 1)        << (7 - x);
-                high |= ((c >> 1) & 1) << (7 - x);
-            }
-
-            if (y == 4)
-                printf("\n    ");
-
-            /* GB tile row: low bitplane first, then high */
-            printf("0x%02x,0x%02x,", low, high);
-        }
-        printf(" /* %d */\n\n", v);
+        s = -1;
+        while (v != 0 && s + 1 != NUM_SIZES && round_r2[s + 1] <= r*r)
+            s += 1;
+        printf("    /* %+4d */ %2d%s\n", v,
+               s < 0 ? 0 : (v > 0 ? 1 + s : 1 + NUM_SIZES + s),
+               k != 255 ? "," : "");
     }
-    printf("};\n");
+    printf("};\n\n");
+}
+
+
+/*
+ * 5x8 font, one string per glyph: 8 rows of 5 pixels separated by spaces,
+ * row 7 is the descender. Drawn at columns 1..5 of the tile.
+ * Characters not listed are blank.
+ */
+struct glyph {
+    char c;
+    const char *rows;
+};
+
+struct glyph glyphs[] = {
+    {'0', ".###. #...# #..## #.#.# ##..# #...# .###. ....."},
+    {'1', "..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###. ....."},
+    {'2', ".###. #...# ....# ...#. ..#.. .#... ##### ....."},
+    {'3', "##### ...#. ..#.. ...#. ....# #...# .###. ....."},
+    {'4', "...#. ..##. .#.#. #..#. ##### ...#. ...#. ....."},
+    {'5', "##### #.... ####. ....# ....# #...# .###. ....."},
+    {'6', "..##. .#... #.... ####. #...# #...# .###. ....."},
+    {'7', "##### ....# ...#. ..#.. .#... .#... .#... ....."},
+    {'8', ".###. #...# #...# .###. #...# #...# .###. ....."},
+    {'9', ".###. #...# #...# .#### ....# ...#. .##.. ....."},
+    {'a', "..... ..... .###. ....# .#### #...# .#### ....."},
+    {'b', "#.... #.... #.##. ##..# #...# #...# ####. ....."},
+    {'c', "..... ..... .###. #.... #.... #...# .###. ....."},
+    {'d', "....# ....# .##.# #..## #...# #...# .#### ....."},
+    {'e', "..... ..... .###. #...# ##### #.... .###. ....."},
+    {'f', "..##. .#..# .#... ###.. .#... .#... .#... ....."},
+    {'g', "..... ..... .#### #...# #...# .#### ....# .###."},
+    {'h', "#.... #.... #.##. ##..# #...# #...# #...# ....."},
+    {'i', "..#.. ..... .##.. ..#.. ..#.. ..#.. .###. ....."},
+    {'j', "...#. ..... ..##. ...#. ...#. ...#. #..#. .##.."},
+    {'k', "#.... #.... #..#. #.#.. ##... #.#.. #..#. ....."},
+    {'l', ".##.. ..#.. ..#.. ..#.. ..#.. ..#.. .###. ....."},
+    {'m', "..... ..... ##.#. #.#.# #.#.# #...# #...# ....."},
+    {'n', "..... ..... #.##. ##..# #...# #...# #...# ....."},
+    {'o', "..... ..... .###. #...# #...# #...# .###. ....."},
+    {'p', "..... ..... ####. #...# #...# ####. #.... #...."},
+    {'q', "..... ..... .#### #...# #...# .#### ....# ....#"},
+    {'r', "..... ..... #.##. ##..# #.... #.... #.... ....."},
+    {'s', "..... ..... .#### #.... .###. ....# ####. ....."},
+    {'t', ".#... .#... ###.. .#... .#... .#..# ..##. ....."},
+    {'u', "..... ..... #...# #...# #...# #..## .##.# ....."},
+    {'v', "..... ..... #...# #...# #...# .#.#. ..#.. ....."},
+    {'w', "..... ..... #...# #...# #.#.# #.#.# .#.#. ....."},
+    {'x', "..... ..... #...# .#.#. ..#.. .#.#. #...# ....."},
+    {'y', "..... ..... #...# #...# #...# .#### ....# .###."},
+    {'z', "..... ..... ##### ...#. ..#.. .#... ##### ....."},
+    {'+', "..... ..#.. ..#.. ##### ..#.. ..#.. ..... ....."},
+    {'-', "..... ..... ..... ##### ..... ..... ..... ....."},
+    {'*', "..... ..#.. #.#.# .###. #.#.# ..#.. ..... ....."},
+    {'/', "..... ....# ...#. ..#.. .#... #.... ..... ....."},
+    {'%', "##... ##..# ...#. ..#.. .#... #..## ...## ....."},
+    {'&', ".##.. #..#. #.#.. .#... #.#.# #..#. .##.# ....."},
+    {'|', "..#.. ..#.. ..#.. ..#.. ..#.. ..#.. ..#.. ....."},
+    {'^', "..#.. .#.#. #...# ..... ..... ..... ..... ....."},
+    {'<', "...#. ..#.. .#... #.... .#... ..#.. ...#. ....."},
+    {'>', ".#... ..#.. ...#. ....# ...#. ..#.. .#... ....."},
+    {'=', "..... ..... ##### ..... ##### ..... ..... ....."},
+    {'?', ".###. #...# ....# ...#. ..#.. ..... ..#.. ....."},
+    {'!', "..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#.. ....."},
+    {':', "..... .##.. .##.. ..... .##.. .##.. ..... ....."},
+    {'.', "..... ..... ..... ..... ..... .##.. .##.. ....."},
+    {'(', "...#. ..#.. .#... .#... .#... ..#.. ...#. ....."},
+    {')', ".#... ..#.. ...#. ...#. ...#. ..#.. .#... ....."},
+    {'_', "..... ..... ..... ..... ..... ..... ##### ....."},
+};
+
+
+/* ASCII 32..127 in colour c */
+void
+calc_font(const char *name, int c)
+{
+    int px[8][8];
+    int ch = 0;
+    int g = 0;
+    int x = 0;
+    int y = 0;
+    const char *rows = NULL;
+    char comment[8];
+
+    printf("const unsigned char %s[] = {\n", name);
+    for (ch = 32; ch != 128; ch += 1) {
+        memset(px, 0, sizeof px);
+        for (g = 0; g != (int)(sizeof glyphs / sizeof glyphs[0]); g += 1) {
+            if (glyphs[g].c != ch)
+                continue;
+            rows = glyphs[g].rows;
+            for (y = 0; y != 8; y += 1)
+                for (x = 0; x != 5; x += 1)
+                    px[y][1 + x] = rows[y * 6 + x] == '#' ? c : 0;
+        }
+        snprintf(comment, sizeof comment, "'%c'", ch);
+        emit_tile(px, comment);
+    }
+    printf("};\n\n");
+}
+
+
+/* x, y and i for each of the 256 cells, so the interpreter can point at them */
+void
+calc_cells(void)
+{
+    int k = 0;
+
+    printf("const signed char cell_x[] = {");
+    for (k = 0; k != 256; k += 1)
+        printf("%s%d,", k % 16 ? "" : "\n    ", k % 16);
+    printf("\n};\n\nconst signed char cell_y[] = {");
+    for (k = 0; k != 256; k += 1)
+        printf("%s%d,", k % 16 ? "" : "\n    ", k / 16);
+    printf("\n};\n\nconst signed char cell_i[] = {");
+    for (k = 0; k != 256; k += 1)
+        printf("%s%d,", k % 16 ? "" : "\n    ", (signed char)k);
+    printf("\n};\n\n");
 }
 
 
@@ -77,6 +219,9 @@ double angle_tan(double i) { return tan(i * (M_PI/128.0)) * 127; }
 /* input scaled like an angle, output is an angle: range about +-51 */
 double angle_atan(double i) { return atan(i * (M_PI/128.0)) * (128.0/M_PI); }
 double int_sqrt(double i) { return i < 0 ? 0 : floor(sqrt(i)); }
+/* saturating, so neg/abs of -128 give 127 */
+double neg(double i) { return -i; }
+double absolute(double i) { return fabs(i); }
 
 
 void
@@ -90,10 +235,10 @@ calc_table(const char *name, fn_t f)
     for (k = 0; k != 256; k += 1) {
         i = (signed char)k;
         d = f(i);
-        printf("    /* %+4d %+9.2f */ %+4d", i, d, to_i8(d));
+        printf("    /* %+4d %+9.2f */ %+4d", i, fabs(d) < 1e6 ? d : 0, to_i8(d));
         printf("%s\n", k != 255 ? "," : "");
     }
-    printf("};\n");
+    printf("};\n\n");
 }
 
 
@@ -101,9 +246,14 @@ int
 main(void)
 {
     calc_circles();
+    calc_font("font_gfx", 1);
+    calc_font("font_hi_gfx", 2);
+    calc_cells();
     calc_table("sin_table",  angle_sin);
     calc_table("tan_table",  angle_tan);
     calc_table("atan_table", angle_atan);
     calc_table("sqrt_table", int_sqrt);
+    calc_table("neg_table",  neg);
+    calc_table("abs_table",  absolute);
     return 0;
 }
